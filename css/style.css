@@ -283,3 +283,5 @@ table.inputs td { padding: 2px 4px 2px 0; }
 table.calc { font-size: 12px; min-width: 560px; }
 table.calc th { white-space: normal; vertical-align: bottom; }
 #panel { overflow-x: hidden; }
+.report-list .label { flex: 1; }
+.btn.mini { padding: 1px 8px; font-size: 12px; }

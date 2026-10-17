@@ -47,6 +47,7 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
      Homes are shown on the map in five classes, from very low to very high.
    - **Vulnerable groups**: children (0–14), elderly (65+), people with disabilities and people in extreme poverty. Their shares can be filled in automatically with national figures from the **World Bank** (disability uses the WHO global estimate of 16%), or entered by hand.
    - **Combined with the flood analysis**: residents flooded in each vulnerability class, the number of highly vulnerable residents flooded (for prioritisation), and the vulnerable groups in the flood zone.
+   - **CSV and GeoJSON downloads**, one row per home: score, class and rank, each indicator, census value, distances to health and emergency services, estimated children, elderly people, people with disabilities and people in poverty, and flood depth (if step 5 has run).
 7. **Multi-hazard risk**: every building gets a 0–1 score for each hazard:
 
    | Hazard | How it is scored |
@@ -64,12 +65,13 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    Results include a **likelihood × impact risk matrix** with its full calculation shown (90th-percentile score → likelihood; share of residents at high hazard → impact, +1 if a critical facility is exposed; L × I → rating), homes and residents facing two or more high hazards, critical facilities exposed, maps for each hazard and for combined risk, and CSV/GeoJSON exports. Hazards that don't apply (no coast, no glaciers, no terrain above the snow line) are reported and left out.
 8. **Report & downloads**: one click downloads a ZIP package containing:
    - `README.txt`: a readable summary of every setting and result, step by step, including the risk-matrix working
+   - `steps/`: a detailed table for **each step you ran** (population, exposure, flood risk, social vulnerability, multi-hazard), covering the features that step assessed and its values
    - `parameters.csv`: every selected setting
    - `buildings.csv` and `facilities.csv`: one row per feature with all its analysis values (population, distance and height above water, flood depth and loss per scenario, average annual loss, social vulnerability and its indicators, every hazard score, the multi-hazard index and combined risk)
    - `tables/`: population, exposure, flood scenarios, finance layers, vulnerability classes, vulnerable groups, hazard summary, **risk-matrix calculation** and earthquakes
    - `layers/`: area, buildings, facilities, roads, waterways and glacial lakes as GeoJSON, with the same values
 
-   Buildings, facilities and the risk matrix can also be downloaded as separate CSVs. Each step still has its own quick CSV/GeoJSON exports.
+   The checklist in step 8 has a **CSV button for each completed step**, and buildings, facilities and the risk matrix can also be downloaded as separate CSVs. Each step still has its own quick CSV/GeoJSON exports.
 
 **Facility categories** come from several OSM tag families, not just `amenity`. They include `healthcare`, `emergency`, `office=government`, `shop`, `tourism`, `historic`/`heritage`, `power`, `man_made`, `telecom`, `railway`, `aeroway` and `leisure`, plus road bridges. These are grouped as follows:
 

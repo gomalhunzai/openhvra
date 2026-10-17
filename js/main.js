@@ -5,7 +5,7 @@ import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, D
 import { DrawTool } from './draw.js';
 import { DrawControl, LayerControl } from './controls.js';
 import { lossCurve } from './chart.js';
-import { buildPackage, buildingsCSV, facilitiesCSV, matrixCSV } from './report.js';
+import { buildPackage, buildingsCSV, facilitiesCSV, matrixCSV, STEPS, stepCSV, stepGeoJSON } from './report.js';
 import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel as fileFeatureName, ACCEPT } from './upload.js';
 import { SVI_INDICATORS, SVI_CLASSES, GROUPS, DEFAULT_SHARES, sviClass, fetchCountryShares, groupCounts, prepareCensus, computeSVI, classifySVI, sviSummary } from './social.js';
 import { HAZARDS, HIGH, NOISE_FLOOR, LIKELIHOOD, IMPACT, IMPACT_STEPS, rating, SCORE_CLASSES, scoreClass, loadHazardContext, lakesFromFeatures, scoreHazards, combine, riskMatrix } from './hazards.js';
@@ -978,8 +978,12 @@ function renderSVI() {
     ${[...use].filter((k) => all.means[k] != null).map((k) => row(SVI_INDICATORS[k].label + (k === 'census' && cen ? ` (${escapeHtml(cen.field)})` : ''), all.means[k].toFixed(2))).join('')}
     </table>`;
   if (!R) html += '<p class="note">Run the flood risk analysis (step 5) to see how many vulnerable people are in the flood zone.</p>';
-  html += `<p class="note">Computed for ${fmt(ds.buildings.filter((b) => b.pop > 0).length)} homes in ${state.sviDone.ms} ms. The index reflects mapped OSM facilities; missing clinics or shelters in OSM make an area look more vulnerable than it is.</p>`;
+  html += `<p class="note">Computed for ${fmt(ds.buildings.filter((b) => b.pop > 0).length)} homes in ${state.sviDone.ms} ms. The index reflects mapped OSM facilities; missing clinics or shelters in OSM make an area look more vulnerable than it is.</p>
+    <div class="row" style="margin-top:8px"><button id="dl-svi-csv" class="btn">Social vulnerability CSV</button><button id="dl-svi-geojson" class="btn">GeoJSON (points)</button></div>
+    <p class="note">One row per home: score, class and rank, each indicator, census value, distances to health and emergency services, estimated children, elderly, people with disabilities and people in poverty${state.risk ? ', and flood depth' : ''}.</p>`;
   $('svi-results').innerHTML = html;
+  $('dl-svi-csv').addEventListener('click', () => download(`openhvra-social-vulnerability-${stamp()}.csv`, stepCSV(snapshot(), 'svi'), 'text/csv'));
+  $('dl-svi-geojson').addEventListener('click', () => download(`openhvra-social-vulnerability-${stamp()}.geojson`, stepGeoJSON(snapshot(), 'svi'), 'application/geo+json'));
 }
 
 function clearSVI() {
@@ -1379,21 +1383,25 @@ function snapshot() {
   };
 }
 
+// Which steps have run, each with its own detailed CSV.
 function updateReportChecklist() {
-  const items = [
-    ['Data & population (steps 1–2)', !!state.dataset],
-    ['Exposure by distance (step 4)', !!state.exposure],
-    ['Flood risk & risk finance (step 5)', !!state.risk],
-    ['Social vulnerability (step 6)', !!state.sviDone],
-    ['Multi-hazard risk & matrix (step 7)', !!state.mh],
-  ];
-  $('report-checklist').innerHTML = items.map(([label, done]) =>
-    `<li class="${done ? 'done' : 'todo'}"><span class="mark">${done ? '✓' : '–'}</span>${label}${done ? '' : ' <span class="small">(not run, left out)</span>'}</li>`).join('');
+  const ran = { population: !!state.dataset, exposure: !!state.exposure, flood: !!state.risk, svi: !!state.sviDone, mh: !!state.mh };
+  $('report-checklist').innerHTML = STEPS.map((st) => {
+    const done = ran[st.key];
+    return `<li class="${done ? 'done' : 'todo'}"><span class="mark">${done ? '✓' : '–'}</span><span class="label">${st.label}${done ? '' : ' <span class="small">(not run, left out)</span>'}</span>${
+      done ? `<button type="button" class="btn mini" data-step="${st.key}" title="Detailed table for this step">CSV</button>` : ''}</li>`;
+  }).join('');
   $('dl-package').disabled = $('dl-buildings').disabled = $('dl-facilities').disabled = !state.dataset;
   $('dl-matrix').disabled = !state.mh;
 }
 
 $('report-step').addEventListener('toggle', updateReportChecklist);
+$('report-checklist').addEventListener('click', (e) => {
+  const key = e.target.closest('[data-step]')?.dataset.step;
+  if (!key || !state.dataset) return;
+  const st = STEPS.find((s) => s.key === key);
+  download(`openhvra-${st.file.replace('.csv', '')}-${stamp()}.csv`, stepCSV(snapshot(), key), 'text/csv');
+});
 updateReportChecklist();
 
 const stamp = () => new Date().toISOString().slice(0, 10);

@@ -187,6 +187,7 @@ function summaryText(S) {
   h('Contents of this package');
   L.push('README.txt                this summary');
   L.push('parameters.csv            every setting selected, by step');
+  L.push('steps/step*.csv           detailed table for each step that was run (features it assessed)');
   L.push('buildings.csv             one row per building with every analysis value');
   L.push('facilities.csv            one row per facility with every analysis value');
   L.push('tables/*.csv              summary tables per step (incl. risk_matrix_calculation.csv)');
@@ -271,6 +272,70 @@ function fc(features) {
 
 // ---- Package --------------------------------------------------------------------------------------
 
+// ---- Per-step detail ------------------------------------------------------------------------------
+
+// Identity and building/facility attributes shared by every step table.
+const BASE_COLS = new Set(['osm_id', 'osm_url', 'lon', 'lat', 'name', 'class', 'class_label', 'type', 'material', 'storeys',
+  'storeys_from_osm', 'footprint_m2', 'footprint_estimated', 'floor_area_m2', 'residents', 'group', 'group_label', 'critical']);
+
+export const STEPS = [
+  { key: 'population', label: 'Population (step 2)', file: 'step2_population.csv', ran: (S) => !!S.ds },
+  { key: 'exposure', label: 'Exposure by distance (step 4)', file: 'step4_exposure.csv', ran: (S) => !!S.exposure },
+  { key: 'flood', label: 'Flood risk (step 5)', file: 'step5_flood_risk.csv', ran: (S) => !!S.risk },
+  { key: 'svi', label: 'Social vulnerability (step 6)', file: 'step6_social_vulnerability.csv', ran: (S) => !!S.svi },
+  { key: 'mh', label: 'Multi-hazard risk (step 7)', file: 'step7_multi_hazard.csv', ran: (S) => !!S.mh },
+];
+
+const STEP_COLS = {
+  population: () => false,
+  exposure: (c) => c.startsWith('exp_'),
+  flood: (c) => c.startsWith('flood_') || c === 'slope_deg',
+  svi: (c) => c.startsWith('svi') || c === 'census_value' || c.startsWith('dist_'),
+  mh: (c) => c.startsWith('hz_') || c.startsWith('multi_hazard') || c === 'high_hazards' || c.startsWith('combined_risk'),
+};
+
+// Rows for one step: the features that step assessed, with identity columns
+// plus that step's values (and a few step-specific extras).
+export function stepRows(S, key) {
+  const exp = exposureIndex(S);
+  const ds = S.ds;
+  const pick = (row) => Object.fromEntries(Object.entries(row).filter(([c]) => BASE_COLS.has(c) || STEP_COLS[key](c)));
+  let feats;
+  if (key === 'population') feats = ds.buildings;
+  else if (key === 'exposure') feats = ds.points.filter((p) => exp.has(p));
+  else if (key === 'flood') feats = ds.points.filter((p) => p.hand != null);
+  else if (key === 'svi') feats = ds.buildings.filter((b) => b.pop > 0 && b.svi != null);
+  else feats = ds.points.filter((p) => p.hz);
+  return feats.map((p) => {
+    const row = pick(featureRow(p, S, exp));
+    if (key === 'population' && p.kind === 'building') {
+      row.residential = p.pop > 0;
+      Object.assign(row, Object.fromEntries(Object.entries(groupCounts(p.pop, S.shares)).map(([g, v]) => [`est_${g}`, r2(v)])));
+    }
+    if (key === 'svi') {
+      Object.assign(row, Object.fromEntries(Object.entries(groupCounts(p.pop, S.shares)).map(([g, v]) => [`est_${g}`, r2(v)])));
+      if (S.risk && p.depths) {
+        const sc = S.risk.scenarios[S.riskScenario];
+        row[`flood_depth_${sc.rp}yr_m`] = r2(p.depths[S.riskScenario]);
+      }
+      if (S.mh && p.hz) {
+        row.multi_hazard = r2(p.mhi);
+        if (p.risk != null) row.combined_risk = r2(p.risk);
+      }
+    }
+    return row;
+  });
+}
+
+export function stepCSV(S, key) {
+  return toCSV(stepRows(S, key));
+}
+
+// Light GeoJSON: points with the step's values.
+export function stepGeoJSON(S, key) {
+  return fc(stepRows(S, key).map((row) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [row.lon, row.lat] }, properties: row })));
+}
+
 export function buildingsCSV(S) {
   const exp = exposureIndex(S);
   return toCSV(S.ds.buildings.map((b) => featureRow(b, S, exp)));
@@ -295,6 +360,7 @@ export async function buildPackage(S) {
     if (text) files[name] = strToU8(text);
   };
   put('README.txt', summaryText(S));
+  for (const st of STEPS) if (st.ran(S)) put(`steps/${st.file}`, stepCSV(S, st.key));
   put('parameters.csv', toCSV(parameterRows(S)));
   const bRows = ds.buildings.map((b) => featureRow(b, S, exp));
   const fRows = ds.facilities.map((f) => featureRow(f, S, exp));
