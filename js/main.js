@@ -6,6 +6,7 @@ import { DrawTool } from './draw.js';
 import { DrawControl, BasemapControl } from './controls.js';
 import { lossCurve } from './chart.js';
 import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel, ACCEPT } from './upload.js';
+import { SVI_INDICATORS, SVI_CLASSES, GROUPS, DEFAULT_SHARES, sviClass, fetchCountryShares, groupCounts, prepareCensus, computeSVI, classifySVI, sviSummary } from './social.js';
 
 const MAX_AREA_KM2 = { light: 60, footprints: 25 };
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -27,6 +28,7 @@ const state = {
   last: null,
   exposure: null,
   risk: null,
+  sviDone: null, // { use, census, ms } once social vulnerability is computed
   riskScenario: null, // index of the scenario shown on the map
   dem: null, // { key, dem }
   abort: null,
@@ -86,6 +88,10 @@ groupColor.push(FACILITY_GROUPS.other.color);
 const depthColor = ['step', ['get', 'depth'], DEPTH_CLASSES[0].color];
 DEPTH_CLASSES.slice(0, -1).forEach((c, i) => depthColor.push(c.max, DEPTH_CLASSES[i + 1].color));
 
+const sviColor = ['match', ['get', 'cls']];
+SVI_CLASSES.forEach((c, i) => sviColor.push(i, c.color));
+sviColor.push(SVI_CLASSES[0].color);
+
 // Width in pixels that makes a line `metres` wide on the ground at this latitude.
 function metresToPixels(metres, lat) {
   const w0 = (metres * 512) / (40075016.686 * Math.cos((lat * Math.PI) / 180));
@@ -93,7 +99,7 @@ function metresToPixels(metres, lat) {
 }
 
 map.on('load', () => {
-  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'risk', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
+  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'risk', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
     map.addSource(id, { type: 'geojson', data: EMPTY });
   }
   const isPoint = ['==', ['geometry-type'], 'Point'];
@@ -114,6 +120,8 @@ map.on('load', () => {
   map.addLayer({ id: 'buildings-line', type: 'line', source: 'buildings', filter: ['!', isPoint], minzoom: 15, paint: { 'line-color': '#4a5663', 'line-width': 0.6 } });
   map.addLayer({ id: 'buildings-pt', type: 'circle', source: 'buildings', filter: isPoint, paint: { 'circle-radius': ptRadius, 'circle-color': '#5c6b7a', 'circle-opacity': 0.7 } });
   map.addLayer({ id: 'exposed-fill', type: 'fill', source: 'exposed', filter: ['!', isPoint], paint: { 'fill-color': '#e03131', 'fill-opacity': 0.75 } });
+  map.addLayer({ id: 'svi-fill', type: 'fill', source: 'svi', filter: ['!', isPoint], paint: { 'fill-color': sviColor, 'fill-opacity': 0.9 } });
+  map.addLayer({ id: 'svi-pt', type: 'circle', source: 'svi', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': sviColor } });
   map.addLayer({ id: 'risk-fill', type: 'fill', source: 'risk', filter: ['!', isPoint], paint: { 'fill-color': depthColor, 'fill-opacity': 0.9 } });
   map.addLayer({ id: 'risk-pt', type: 'circle', source: 'risk', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': depthColor } });
   map.addLayer({ id: 'facilities', type: 'circle', source: 'facilities', paint: {
@@ -318,6 +326,9 @@ async function loadData() {
     map.getSource('bbox').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[w, s], [e, s], [e, n], [w, n], [w, s]] } });
     clearExposure();
     clearRisk();
+    clearSVI();
+    $('run-svi').disabled = false;
+    $('wb-fetch').disabled = false;
     $('run').disabled = false;
     $('run-risk').disabled = false;
     applyPopulation();
@@ -359,6 +370,7 @@ function applyPopulation() {
   if (state.last) probe(state.last);
   if (state.exposure) runExposure();
   if (state.risk) computeRisk();
+  if (state.sviDone) runSVI();
 }
 
 for (const id of ['pop-m2', 'pop-levels', 'pop-known', 'pop-unknown']) $(id).addEventListener('change', applyPopulation);
@@ -459,7 +471,7 @@ $('radius').addEventListener('input', (e) => {
 // ---- Hover tooltips (feature identity beyond colour) ----------------------------------------
 
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '260px' });
-const HOVER_LAYERS = ['facilities', 'risk-pt', 'risk-fill', 'buildings-pt', 'buildings-fill'];
+const HOVER_LAYERS = ['facilities', 'risk-pt', 'risk-fill', 'svi-pt', 'svi-fill', 'buildings-pt', 'buildings-fill'];
 
 function hover(point) {
   if (draw.mode || !state.dataset) return popup.remove();
@@ -482,6 +494,9 @@ function tooltipHTML(p) {
     const cur = state.risk.params.currency;
     h += `<br>Value: ${money(p.value, cur)}`;
     if (p.hand != null) h += `<br>Height above river: ${p.hand.toFixed(1)} m<br>Depth (${state.risk.scenarios[state.riskScenario].rp}-yr): ${p.depths[state.riskScenario].toFixed(1)} m · loss ${money(p.losses[state.riskScenario], cur)}`;
+  }
+  if (state.sviDone && p.svi != null) {
+    h += `<br>Social vulnerability: ${p.svi.toFixed(2)} (${SVI_CLASSES[p.sviClass ?? sviClass(p.svi)].label}${state.sviDone.mode === 'relative' ? ' for this area' : ''})`;
   }
   return h;
 }
@@ -661,6 +676,7 @@ function renderRisk() {
     renderRisk();
   });
   showRiskLayer();
+  if (state.sviDone) renderSVI();
 }
 
 function showRiskLayer() {
@@ -718,6 +734,166 @@ function renderFinance() {
 
 for (const id of ['f-ret', 'f-cred', 'f-ins', 'f-mult', 'f-fee']) $(id).addEventListener('input', renderFinance);
 
+// ---- Social vulnerability ---------------------------------------------------------------------
+
+$('share-inputs').innerHTML = Object.entries(GROUPS).map(([k, g]) =>
+  `<label class="field"><span>${g.label}</span><input type="number" id="share-${k}" min="0" max="100" step="0.1" value="${DEFAULT_SHARES[k]}"></label>`).join('');
+$('svi-indicators').innerHTML = Object.entries(SVI_INDICATORS).map(([k, ind]) =>
+  `<label><input type="checkbox" class="svi-ind" value="${k}" ${k === 'census' ? 'disabled' : 'checked'}><span>${ind.label}<span class="muted">${ind.note}</span></span></label>`).join('');
+
+const census = { features: [], name: '' };
+
+function shares() {
+  return Object.fromEntries(Object.keys(GROUPS).map((k) => [k, Math.min(100, Math.max(0, +$(`share-${k}`).value || 0))]));
+}
+
+$('wb-fetch').addEventListener('click', async () => {
+  const ds = state.dataset;
+  if (!ds) return;
+  const [w, s, e, n] = ds.bbox;
+  $('wb-status').textContent = 'Looking up national figures…';
+  $('wb-fetch').disabled = true;
+  try {
+    const res = await fetchCountryShares((w + e) / 2, (s + n) / 2);
+    const found = [];
+    for (const [k, v] of Object.entries(res.values)) {
+      $(`share-${k}`).value = v.value.toFixed(1);
+      found.push(`${GROUPS[k].label.toLowerCase()} ${v.value.toFixed(1)}% (${v.year})`);
+    }
+    const missing = Object.entries(GROUPS).filter(([k, g]) => g.wb && !res.values[k]).map(([, g]) => g.label.toLowerCase());
+    $('wb-status').innerHTML = `${escapeHtml(res.country)}: ${found.join(', ') || 'no figures available'}.` +
+      (missing.length ? ` No recent data for ${missing.join(', ')}; keep or edit the value.` : '') +
+      ' Disability uses the WHO global estimate of 16%. Source: World Bank WDI.';
+    if (state.sviDone) renderSVI();
+  } catch (err) {
+    $('wb-status').innerHTML = `<span class="warn">Could not fetch national figures (${escapeHtml(err.message)}). Enter them manually.</span>`;
+  } finally {
+    $('wb-fetch').disabled = false;
+  }
+});
+
+for (const k of Object.keys(GROUPS)) $(`share-${k}`).addEventListener('change', () => state.sviDone && renderSVI());
+
+$('census-file').accept = ACCEPT;
+$('census-file').addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files?.length) return;
+  const label = [...files].map((f) => f.name).join(', ');
+  $('census-status').textContent = `Reading ${label}…`;
+  try {
+    const { features, format } = await readSpatialFiles(files);
+    const polys = polygonFeatures(features);
+    if (!polys.length) throw new Error('the file has no polygons');
+    // Numeric fields: present and numeric in most features.
+    const keys = [...new Set(polys.flatMap((f) => Object.keys(f.properties ?? {})))];
+    const numeric = keys.filter((k) => polys.filter((f) => Number.isFinite(parseFloat(f.properties?.[k]))).length >= polys.length * 0.8);
+    if (!numeric.length) throw new Error('no numeric fields found');
+    census.features = polys;
+    census.name = label;
+    $('census-field').innerHTML = numeric.map((k) => `<option>${escapeHtml(k)}</option>`).join('');
+    const guess = numeric.find((k) => /pov|depriv|vuln|poor|index|rate|pct|percent/i.test(k));
+    if (guess) $('census-field').value = guess;
+    $('census-opts').classList.remove('hidden');
+    const box = document.querySelector('.svi-ind[value=census]');
+    box.disabled = false;
+    box.checked = true;
+    $('census-status').textContent = `${polys.length} areas from ${label} (${format}). Pick the field to use.`;
+  } catch (err) {
+    $('census-status').innerHTML = `<span class="warn">Could not use ${escapeHtml(label)}: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    e.target.value = '';
+  }
+});
+
+function runSVI() {
+  const ds = state.dataset;
+  if (!ds) return;
+  const use = new Set([...document.querySelectorAll('.svi-ind:checked')].map((i) => i.value));
+  if (!use.size) {
+    $('svi-results').innerHTML = '<p class="warn">Select at least one indicator.</p>';
+    return;
+  }
+  let cen = null;
+  if (use.has('census') && census.features.length) {
+    try {
+      cen = prepareCensus(ds, census.features, $('census-field').value, $('census-higher').checked);
+    } catch (err) {
+      $('census-status').innerHTML = `<span class="warn">${escapeHtml(err.message)}</span>`;
+      use.delete('census');
+    }
+  }
+  const t0 = performance.now();
+  computeSVI(ds, use, cen);
+  state.sviDone = { use, census: cen, ms: Math.round(performance.now() - t0) };
+  classifyAndShowSVI();
+  $('svi-toggle').checked = true;
+  for (const id of ['svi-fill', 'svi-pt']) map.setLayoutProperty(id, 'visibility', 'visible');
+  renderSVI();
+}
+
+function classifyAndShowSVI() {
+  const ds = state.dataset;
+  state.sviDone.mode = $('svi-mode').value;
+  state.sviDone.breaks = classifySVI(ds, state.sviDone.mode);
+  map.getSource('svi').setData({
+    type: 'FeatureCollection',
+    features: ds.buildings.filter((b) => b.pop > 0 && b.svi != null).map((b) => ({ ...b.feature, properties: { fid: b.fid, cls: b.sviClass } })),
+  });
+}
+
+$('svi-mode').addEventListener('change', () => {
+  if (!state.sviDone) return;
+  classifyAndShowSVI();
+  renderSVI();
+});
+
+function renderSVI() {
+  const ds = state.dataset;
+  const { use, census: cen } = state.sviDone;
+  const sh = shares();
+  const all = sviSummary(ds);
+  const high = all.classes[3].pop + all.classes[4].pop;
+  const groups = groupCounts(ds.popTotal, sh);
+  const R = state.risk;
+  const sc = R?.scenarios[state.riskScenario];
+  const flooded = sc && sviSummary(ds, (b) => b.depths?.[state.riskScenario] > 0);
+
+  let html = `
+    <div class="kpis">
+      <div class="kpi alert"><b>${fmt(Math.round(high))}</b><span>residents in high or very high vulnerability homes (${pctOf(high, all.popTotal)})</span></div>
+      <div class="kpi"><b>${fmt(Math.round(all.popTotal))}</b><span>residents scored</span></div>
+    </div>
+    <div class="sub">Residents by vulnerability class</div>
+    <table class="list"><tr><th>Class</th><th class="num">Homes</th><th class="num">Residents</th>${flooded ? `<th class="num">Flooded (${sc.rp}-yr)</th>` : ''}</tr>
+    ${SVI_CLASSES.map((c, i) => `<tr><td><span class="dot" style="background:${c.color}"></span>${c.label}</td><td class="num">${fmt(all.classes[i].buildings)}</td><td class="num">${fmt(Math.round(all.classes[i].pop))}</td>${flooded ? `<td class="num">${fmt(Math.round(flooded.classes[i].pop))}</td>` : ''}</tr>`).join('')}
+    </table>`;
+  if (flooded) {
+    const fh = flooded.classes[3].pop + flooded.classes[4].pop;
+    html += `<p class="note"><b>Priority:</b> ${fmt(Math.round(fh))} highly vulnerable residents live in homes flooded in the ${sc.rp}-year flood.</p>`;
+  }
+  html += `<div class="sub">Vulnerable groups</div>
+    <table class="list"><tr><th>Group</th><th class="num">Share</th><th class="num">In area</th>${sc ? `<th class="num">Flooded (${sc.rp}-yr)</th>` : ''}</tr>
+    ${Object.entries(GROUPS).map(([k, g]) => `<tr><td>${g.label}</td><td class="num">${sh[k]}%</td><td class="num">${fmt(Math.round(groups[k]))}</td>${sc ? `<td class="num">${fmt(Math.round((sc.pop * sh[k]) / 100))}</td>` : ''}</tr>`).join('')}
+    </table>
+    ${state.sviDone.mode === 'relative' ? `<p class="note">Classes rank homes within this area: score breaks at ${state.sviDone.breaks.map((b) => b.toFixed(2)).join(', ')}. Switch to absolute classes to compare areas.</p>` : ''}
+    <p class="note">Group counts apply the shares evenly to the modelled residents; groups overlap (for example, a child in poverty counts in both).</p>
+    <div class="sub">What drives vulnerability <span class="muted">(average score, 0–1)</span></div>
+    <table class="list">
+    ${[...use].filter((k) => all.means[k] != null).map((k) => row(SVI_INDICATORS[k].label + (k === 'census' && cen ? ` (${escapeHtml(cen.field)})` : ''), all.means[k].toFixed(2))).join('')}
+    </table>`;
+  if (!R) html += '<p class="note">Run the flood risk analysis (step 5) to see how many vulnerable people are in the flood zone.</p>';
+  html += `<p class="note">Computed for ${fmt(ds.buildings.filter((b) => b.pop > 0).length)} homes in ${state.sviDone.ms} ms. The index reflects mapped OSM facilities; missing clinics or shelters in OSM make an area look more vulnerable than it is.</p>`;
+  $('svi-results').innerHTML = html;
+}
+
+function clearSVI() {
+  state.sviDone = null;
+  map.getSource('svi')?.setData(EMPTY);
+  $('svi-results').innerHTML = '';
+}
+
+$('run-svi').addEventListener('click', runSVI);
+
 // ---- Downloads (light: points, 6-decimal coordinates, essential fields) ------------------------
 
 function download(name, text, type) {
@@ -732,7 +908,7 @@ const r1 = (v) => Math.round(v * 10) / 10;
 
 function baseProps(p) {
   return p.kind === 'building'
-    ? { osm_id: p.osm_id, kind: 'building', class: p.cls, type: p.type, name: p.name, storeys: p.floors, footprint_m2: Math.round(p.footprint), residents: r1(p.pop) }
+    ? { osm_id: p.osm_id, kind: 'building', class: p.cls, type: p.type, name: p.name, storeys: p.floors, footprint_m2: Math.round(p.footprint), residents: r1(p.pop), ...(state.sviDone && p.svi != null ? { svi: Math.round(p.svi * 100) / 100 } : {}) }
     : { osm_id: p.osm_id, kind: 'facility', group: p.group, type: p.type, name: p.name };
 }
 
@@ -818,7 +994,8 @@ $('legend').innerHTML =
   '<li><span class="dot" style="background:#f59f00"></span>Major road</li>' +
   '<li><span class="dot" style="background:#e03131"></span>Exposed feature</li>' +
   '<li><span class="dot" style="background:#ffd43b;outline:1px solid #1d2329"></span>Inside probe</li>' +
-  '<li><span class="dot" style="background:#2a78d6"></span>Flooded building (darker = deeper)</li>';
+  '<li><span class="dot" style="background:#2a78d6"></span>Flooded building (darker = deeper)</li>' +
+  '<li><span class="dot" style="background:#b8481b"></span>Social vulnerability (darker = higher)</li>';
 
 $('panel-toggle').addEventListener('click', () => {
   $('panel').classList.toggle('collapsed');

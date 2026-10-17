@@ -137,6 +137,21 @@ export class Dataset {
     return null;
   }
 
+  // Nearest point (building/facility) matching `pred` within `maxR` metres.
+  nearestPoint(x, y, pred, maxR = 5000) {
+    const radii = [500, 2000].filter((r) => r < maxR).concat(maxR);
+    for (const r of radii) {
+      let best = null;
+      this.pointIndex.query(x - r, y - r, x + r, y + r, (p) => {
+        if (!pred(p)) return;
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (!best || d < best.d) best = { p, d };
+      });
+      if (best && best.d <= r) return best;
+    }
+    return null;
+  }
+
   probe(lon, lat, r) {
     const [x, y] = this.proj.toXY(lon, lat);
     const res = {

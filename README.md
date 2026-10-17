@@ -33,7 +33,19 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    - **Vulnerability**: depth-damage curves for residential, commercial and industrial buildings (approximately the JRC global curves for Asia, Huizinga et al. 2017), applied to replacement cost per m² plus contents.
    - **Risk metrics**: for each scenario, the loss, people affected and critical facilities flooded. Also a **loss-exceedance curve**, the **average annual loss (AAL)**, the expected number of people affected per year, and a landslide screen based on slope.
    - **Risk finance**: splits the loss curve into layers: *retain* (reserve fund), *borrow* (contingent credit), *transfer* (parametric insurance or cat bond) and *residual*. Each layer shows its expected annual loss and an indicative annual cost.
-6. **Exports**: lightweight GeoJSON (points, coordinates rounded to 6 decimals, essential fields only) and CSV, for both the exposure results and the building-level risk results (depth, loss per scenario, AAL per building).
+6. **Social vulnerability**
+   - **Social Vulnerability Index (SVI)**: each home gets a score from 0 (least) to 1 (most vulnerable), the average of these indicators:
+     - distance to the nearest health facility
+     - distance to emergency services or a shelter
+     - distance to a road
+     - housing fragility (huts, sheds, tents, containers, small single-storey homes)
+     - crowding (residents per hectare)
+     - optionally, your own **census layer**: upload ward or district polygons with a numeric field such as the poverty rate, and it is joined to every home inside them
+
+     Homes are shown on the map in five classes, from very low to very high.
+   - **Vulnerable groups**: children (0–14), elderly (65+), people with disabilities and people in extreme poverty. Their shares can be filled in automatically with national figures from the **World Bank** (disability uses the WHO global estimate of 16%), or entered by hand.
+   - **Combined with the flood analysis**: residents flooded in each vulnerability class, the number of highly vulnerable residents flooded (for prioritisation), and the vulnerable groups in the flood zone.
+7. **Exports**: lightweight GeoJSON (points, coordinates rounded to 6 decimals, essential fields only) and CSV, for both the exposure results and the building-level risk results (depth, loss per scenario, AAL per building).
 
 **Facility categories** come from several OSM tag families, not just `amenity`. They include `healthcare`, `emergency`, `office=government`, `shop`, `tourism`, `historic`/`heritage`, `power`, `man_made`, `telecom`, `railway`, `aeroway` and `leisure`, plus road bridges. These are grouped as follows:
 
@@ -69,6 +81,7 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 | `js/analysis.js` | `Dataset`: area clipping, population model, cursor probe, distance exposure |
 | `js/risk.js` | Elevation tiles, flood-depth model, depth-damage curves, AAL and risk-finance layers |
 | `js/spatial.js` | Projection, grid index, distance and geometry helpers |
+| `js/social.js` | Social Vulnerability Index, census join, World Bank demographic shares |
 | `js/upload.js` | Reading boundary files (Shapefile, GeoJSON, TopoJSON, KML/KMZ, GPX, GeoPackage, WKT), reprojection, simplification |
 | `js/draw.js`, `js/controls.js` | Area drawing tool, map toolbar and basemap switcher |
 | `js/chart.js` | Loss-exceedance curve (SVG) |
@@ -81,6 +94,7 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 - **OSM coverage varies.** Missing buildings mean missing people and losses. Check against the satellite basemap.
 - **Population** is a floor-area model. Calibrate it with a census or WorldPop total whenever you can.
 - **The flood hazard is a proxy.** "Height above nearest waterway" ignores flood defences, channel capacity, backwater effects and rainfall flooding. The elevation data is about 30 m resolution with several metres of vertical error, and often includes buildings and trees. Replace the default water levels with values from local hydrology or a flood study.
+- **The social vulnerability index uses proxies.** Where OSM is missing clinics, shelters or roads, areas look more vulnerable than they are. Vulnerable-group counts apply national shares evenly, so for local differences upload census data.
 - **The damage curves and costs are defaults.** Use national replacement costs, for example from the JRC or national statistics.
 - **AAL** comes from a handful of scenarios: no damage is assumed below the most frequent one, and the rarest one's loss is assumed for anything rarer.
 - **Risk-finance costs** (premium multiples, credit fees) are indicative. Real pricing depends on markets and on basis risk.

@@ -157,6 +157,42 @@
     </details>
 
     <details>
+      <summary><span class="step">6</span> Social vulnerability</summary>
+      <div class="body">
+        <p class="muted small">Scores every home from 0 (least) to 1 (most vulnerable) on access to health care, emergency services and roads, housing fragility and crowding, plus your own census data if you upload it. Also estimates how many children, elderly people, people with disabilities and people in poverty live in the area and in the flood zone.</p>
+
+        <div class="sub">Vulnerable groups <span class="muted">(% of population)</span></div>
+        <div class="grid2 even" id="share-inputs"></div>
+        <button id="wb-fetch" class="btn" disabled>Use national figures (World Bank)</button>
+        <p id="wb-status" class="note"></p>
+
+        <div class="sub">Index indicators</div>
+        <div id="svi-indicators" class="check-list"></div>
+
+        <div class="sub">Census indicator <span class="muted">(optional)</span></div>
+        <div class="upload-row">
+          <label class="btn" for="census-file">Upload census layer</label>
+          <input type="file" id="census-file" multiple hidden>
+          <span class="muted small">Polygons with a numeric field, such as the poverty rate per ward (Shapefile, GeoJSON, GeoPackage and the other supported formats).</span>
+        </div>
+        <p id="census-status" class="note"></p>
+        <div id="census-opts" class="grid2 even hidden">
+          <label class="field"><span>Field</span><select id="census-field"></select></label>
+          <label class="field check"><input type="checkbox" id="census-higher" checked><span>Higher value = more vulnerable</span></label>
+        </div>
+
+        <label class="field" style="margin-top:10px"><span>Classes</span>
+          <select id="svi-mode">
+            <option value="relative">Relative to this area (fifths of homes)</option>
+            <option value="absolute">Absolute score (0.2 steps, comparable between areas)</option>
+          </select>
+        </label>
+        <button id="run-svi" class="btn primary block" disabled>Compute social vulnerability</button>
+        <div id="svi-results" class="stats"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>Layers &amp; legend</summary>
       <div class="body">
         <div class="toggles">
@@ -166,6 +202,7 @@
           <label><input type="checkbox" data-layers="facilities" checked> Facilities</label>
           <label><input type="checkbox" data-layers="buffer,exposed-fill,exposed-pt" checked> Exposure</label>
           <label><input type="checkbox" data-layers="risk-fill,risk-pt" checked> Flood depth</label>
+          <label><input type="checkbox" id="svi-toggle" data-layers="svi-fill,svi-pt" checked> Social vulnerability</label>
         </div>
         <ul id="legend" class="legend"></ul>
       </div>
