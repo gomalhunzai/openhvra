@@ -7,6 +7,7 @@ import { DrawControl, BasemapControl } from './controls.js';
 import { lossCurve } from './chart.js';
 import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel as fileFeatureName, ACCEPT } from './upload.js';
 import { SVI_INDICATORS, SVI_CLASSES, GROUPS, DEFAULT_SHARES, sviClass, fetchCountryShares, groupCounts, prepareCensus, computeSVI, classifySVI, sviSummary } from './social.js';
+import { HAZARDS, HIGH, NOISE_FLOOR, SCORE_CLASSES, scoreClass, loadHazardContext, lakesFromFeatures, scoreHazards, combine, riskMatrix } from './hazards.js';
 
 const MAX_AREA_KM2 = { light: 60, footprints: 25 };
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -92,6 +93,11 @@ const sviColor = ['match', ['get', 'cls']];
 SVI_CLASSES.forEach((c, i) => sviColor.push(i, c.color));
 sviColor.push(SVI_CLASSES[0].color);
 
+const mhColor = ['step', ['get', 'v'], SCORE_CLASSES[0].color];
+SCORE_CLASSES.slice(0, -1).forEach((c, i) => mhColor.push(c.max, SCORE_CLASSES[i + 1].color));
+
+const exposedColor = ['match', ['get', 'ex'], 'bank', '#f08c00', '#e03131'];
+
 // Width in pixels that makes a line `metres` wide on the ground at this latitude.
 function metresToPixels(metres, lat) {
   const w0 = (metres * 512) / (40075016.686 * Math.cos((lat * Math.PI) / 180));
@@ -99,7 +105,7 @@ function metresToPixels(metres, lat) {
 }
 
 map.on('load', () => {
-  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'risk', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
+  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'mh', 'risk', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
     map.addSource(id, { type: 'geojson', data: EMPTY });
   }
   const isPoint = ['==', ['geometry-type'], 'Point'];
@@ -119,9 +125,11 @@ map.on('load', () => {
   map.addLayer({ id: 'buildings-fill', type: 'fill', source: 'buildings', filter: ['!', isPoint], paint: { 'fill-color': '#5c6b7a', 'fill-opacity': 0.35 } });
   map.addLayer({ id: 'buildings-line', type: 'line', source: 'buildings', filter: ['!', isPoint], minzoom: 15, paint: { 'line-color': '#4a5663', 'line-width': 0.6 } });
   map.addLayer({ id: 'buildings-pt', type: 'circle', source: 'buildings', filter: isPoint, paint: { 'circle-radius': ptRadius, 'circle-color': '#5c6b7a', 'circle-opacity': 0.7 } });
-  map.addLayer({ id: 'exposed-fill', type: 'fill', source: 'exposed', filter: ['!', isPoint], paint: { 'fill-color': '#e03131', 'fill-opacity': 0.75 } });
+  map.addLayer({ id: 'exposed-fill', type: 'fill', source: 'exposed', filter: ['!', isPoint], paint: { 'fill-color': exposedColor, 'fill-opacity': 0.75 } });
   map.addLayer({ id: 'svi-fill', type: 'fill', source: 'svi', filter: ['!', isPoint], paint: { 'fill-color': sviColor, 'fill-opacity': 0.9 } });
   map.addLayer({ id: 'svi-pt', type: 'circle', source: 'svi', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': sviColor } });
+  map.addLayer({ id: 'mh-fill', type: 'fill', source: 'mh', filter: ['!', isPoint], paint: { 'fill-color': mhColor, 'fill-opacity': 0.9 } });
+  map.addLayer({ id: 'mh-pt', type: 'circle', source: 'mh', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': mhColor } });
   map.addLayer({ id: 'risk-fill', type: 'fill', source: 'risk', filter: ['!', isPoint], paint: { 'fill-color': depthColor, 'fill-opacity': 0.9 } });
   map.addLayer({ id: 'risk-pt', type: 'circle', source: 'risk', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': depthColor } });
   map.addLayer({ id: 'facilities', type: 'circle', source: 'facilities', paint: {
@@ -130,7 +138,7 @@ map.on('load', () => {
   } });
   map.addLayer({ id: 'exposed-pt', type: 'circle', source: 'exposed', filter: isPoint, paint: {
     'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 5, 18, 10], 'circle-color': 'rgba(0,0,0,0)',
-    'circle-stroke-color': '#e03131', 'circle-stroke-width': 2.5,
+    'circle-stroke-color': exposedColor, 'circle-stroke-width': 2.5,
   } });
   map.addLayer({ id: 'probe-fill', type: 'fill', source: 'probe', paint: { 'fill-color': '#0b6bcb', 'fill-opacity': 0.08 } });
   map.addLayer({ id: 'probe-line', type: 'line', source: 'probe', paint: { 'line-color': '#0b6bcb', 'line-width': 2 } });
@@ -327,6 +335,8 @@ async function loadData() {
     clearExposure();
     clearRisk();
     clearSVI();
+    clearMH();
+    $('run-mh').disabled = false;
     $('run-svi').disabled = false;
     $('wb-fetch').disabled = false;
     $('run').disabled = false;
@@ -371,6 +381,7 @@ function applyPopulation() {
   if (state.exposure) runExposure();
   if (state.risk) computeRisk();
   if (state.sviDone) runSVI();
+  if (state.mh) combineMH(false);
 }
 
 for (const id of ['pop-m2', 'pop-levels', 'pop-known', 'pop-unknown']) $(id).addEventListener('change', applyPopulation);
@@ -430,6 +441,7 @@ function probe(lngLat) {
       ${row('Facilities in circle', fmt(res.facilities.length))}
       ${row('Road length (major / minor / paths)', `${m(res.roadLen.major)} / ${m(res.roadLen.minor)} / ${m(res.roadLen.path)}`)}
       ${row('Waterway length (rivers / streams)', `${m(res.waterLen.river)} / ${m(res.waterLen.stream)}`)}
+      ${state.dem && res.nearestWater ? row('Height above nearest waterway', heightAbove(lng, lat, res.nearestWater)) : ''}
       ${row('Nearest river or canal', res.nearestRiver ? `${lineName(res.nearestRiver.line)} · ${nearestText(res.nearestRiver)}` : '—')}
     </table>`;
   if (res.facilities.length) {
@@ -438,6 +450,12 @@ function probe(lngLat) {
     html += '</table>';
   }
   $('probe-stats').innerHTML = html;
+}
+
+function heightAbove(lng, lat, n) {
+  const dem = state.dem.dem;
+  const h = dem.elev(lng, lat) - dem.minAround(n.lonlat[0], n.lonlat[1], 2);
+  return Number.isFinite(h) ? `${Math.max(0, h).toFixed(1)} m` : '—';
 }
 
 let raf = 0;
@@ -471,7 +489,7 @@ $('radius').addEventListener('input', (e) => {
 // ---- Hover tooltips (feature identity beyond colour) ----------------------------------------
 
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '260px' });
-const HOVER_LAYERS = ['facilities', 'risk-pt', 'risk-fill', 'svi-pt', 'svi-fill', 'buildings-pt', 'buildings-fill'];
+const HOVER_LAYERS = ['facilities', 'risk-pt', 'risk-fill', 'mh-pt', 'mh-fill', 'svi-pt', 'svi-fill', 'buildings-pt', 'buildings-fill'];
 
 function hover(point) {
   if (draw.mode || !state.dataset) return popup.remove();
@@ -495,6 +513,11 @@ function tooltipHTML(p) {
     h += `<br>Value: ${money(p.value, cur)}`;
     if (p.hand != null) h += `<br>Height above river: ${p.hand.toFixed(1)} m<br>Depth (${state.risk.scenarios[state.riskScenario].rp}-yr): ${p.depths[state.riskScenario].toFixed(1)} m · loss ${money(p.losses[state.riskScenario], cur)}`;
   }
+  if (state.mh && p.hz) {
+    const parts = state.mh.keys.filter((k) => (p.hz[k] ?? 0) >= 0.2).map((k) => `${HAZARDS[k].short} ${p.hz[k].toFixed(2)}`);
+    h += `<br>Multi-hazard: ${p.mhi.toFixed(2)}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+    if (p.risk != null) h += `<br>Combined risk: ${p.risk.toFixed(2)}`;
+  }
   if (state.sviDone && p.svi != null) {
     h += `<br>Social vulnerability: ${p.svi.toFixed(2)} (${SVI_CLASSES[p.sviClass ?? sviClass(p.svi)].label}${state.sviDone.mode === 'relative' ? ' for this area' : ''})`;
   }
@@ -507,17 +530,41 @@ $('map').addEventListener('mouseleave', () => popup.remove());
 
 for (const [k, s] of Object.entries(SOURCES)) $('source').add(new Option(s.label, k));
 
-function runExposure() {
+const isWaterSource = () => $('source').value.startsWith('water');
+function updateElevationOption() {
+  $('elev-opts').classList.toggle('hidden', !isWaterSource());
+}
+$('source').addEventListener('change', updateElevationOption);
+updateElevationOption();
+
+async function runExposure() {
   const ds = state.dataset;
   if (!ds) return;
   const dist = Math.max(1, Math.min(2000, +$('dist').value || 100));
-  const res = ds.exposure($('source').value, dist);
+  const useElev = isWaterSource() && $('use-elev').checked;
+  let dem = null;
+  if (useElev) {
+    $('run').disabled = true;
+    try {
+      dem = await ensureDEM($('exposure-results'));
+    } catch (err) {
+      $('exposure-results').innerHTML = `<p class="warn">Elevation unavailable (${escapeHtml(err.message)}); showing distance only.</p>`;
+    } finally {
+      $('run').disabled = false;
+    }
+  }
+  const maxHeight = Math.max(0, +$('max-height').value || 5);
+  const res = ds.exposure($('source').value, dist, { dem, maxHeight });
   state.exposure = res;
 
   const lat = (ds.bbox[1] + ds.bbox[3]) / 2;
   map.setPaintProperty('buffer', 'line-width', metresToPixels(dist * 2, lat));
   map.getSource('buffer').setData({ type: 'FeatureCollection', features: res.sourceLines.map((l) => l.feature) });
-  map.getSource('exposed').setData({ type: 'FeatureCollection', features: res.hits.map(({ p }) => p.feature) });
+  // Flood-exposed in red; steep-bank (erosion) in orange; high-and-stable not drawn.
+  map.getSource('exposed').setData({
+    type: 'FeatureCollection',
+    features: res.all.filter((h) => h.ex !== 'high').map(({ p, ex }) => ({ ...p.feature, properties: { ...p.feature.properties, ex } })),
+  });
 
   const src = SOURCES[res.sourceKey];
   const pct = (a, b) => (b ? ((100 * a) / b).toFixed(1) : '0');
@@ -528,12 +575,22 @@ function runExposure() {
     const fac = Object.values(res.groups).reduce((a, b) => a + b, 0);
     html = `
       <div class="kpis">
-        <div class="kpi alert"><b>${fmt(Math.round(res.pop))}</b><span>est. residents (${pct(res.pop, res.totals.pop)}%) within ${dist} m of ${escapeHtml(src.short)}</span></div>
+        <div class="kpi alert"><b>${fmt(Math.round(res.pop))}</b><span>est. residents (${pct(res.pop, res.totals.pop)}%) ${res.elevation ? `flood-exposed: within ${dist} m and ≤ ${res.maxHeight} m above` : `within ${dist} m of`} ${escapeHtml(src.short)}</span></div>
         <div class="kpi alert"><b>${fmt(res.buildings)}</b><span>of ${fmt(res.totals.buildings)} buildings (${pct(res.buildings, res.totals.buildings)}%)</span></div>
         <div class="kpi alert"><b>${fmt(fac)}</b><span>of ${fmt(res.totals.facilities)} facilities</span></div>
         <div class="kpi"><b>${m(res.sourceLength)}</b><span>of ${escapeHtml(src.label.toLowerCase())} in the area</span></div>
-      </div>
-      <p class="note">Distances are measured from each feature's centre.</p>`;
+      </div>`;
+    if (res.elevation) {
+      html += `<div class="sub">Within ${dist} m, split by height above the water</div>
+        <table class="list"><tr><th></th><th class="num">Buildings</th><th class="num">Residents</th><th class="num">Facilities</th></tr>
+        <tr><td><span class="dot" style="background:#e03131"></span>Flood-exposed (≤ ${res.maxHeight} m above)</td><td class="num">${fmt(res.buildings)}</td><td class="num">${fmt(Math.round(res.pop))}</td><td class="num">${fmt(fac)}</td></tr>
+        <tr><td><span class="dot" style="background:#f08c00"></span>Steep bank: erosion / undercutting risk</td><td class="num">${fmt(res.bank.buildings)}</td><td class="num">${fmt(Math.round(res.bank.pop))}</td><td class="num">${fmt(res.bank.facilities)}</td></tr>
+        <tr><td><span class="dot" style="background:#adb5bd"></span>Higher up on stable ground (not exposed)</td><td class="num">${fmt(res.high.buildings)}</td><td class="num">${fmt(Math.round(res.high.pop))}</td><td class="num">${fmt(res.high.facilities)}</td></tr>
+        </table>
+        <p class="note">Height is ground elevation at the building minus the channel elevation at its nearest point on the waterway (~30 m elevation data, a few metres' error). "Steep bank" means the ground rises 25° or more from the water to the building.</p>`;
+    } else {
+      html += '<p class="note">Distances are measured from each feature\'s centre. For rivers and streams, tick "Use elevation" to leave out buildings well above the water.</p>';
+    }
     if (fac) {
       html += `<div class="sub">Exposed facilities by type</div>${groupTable(res.groups)}`;
       const critical = res.hits.filter(({ p }) => p.kind === 'facility' && CRITICAL_GROUPS.has(p.group));
@@ -584,6 +641,21 @@ function riskParams() {
   };
 }
 
+// Elevation for the loaded area, shared by the flood and multi-hazard steps.
+// Padded ~1.5 km so rivers, slopes and avalanche paths just outside are covered.
+async function ensureDEM(statusEl) {
+  const ds = state.dataset;
+  const key = ds.bbox.join(',');
+  if (state.dem?.key === key) return state.dem.dem;
+  const [w, s, e, n] = ds.bbox;
+  const pad = 0.015;
+  const dem = await loadDEM([w - pad, s - pad, e + pad, n + pad], {
+    onProgress: (done, total) => (statusEl.textContent = `Downloading elevation tiles… ${done}/${total}`),
+  });
+  state.dem = { key, dem };
+  return dem;
+}
+
 async function runRisk() {
   const ds = state.dataset;
   if (!ds) return;
@@ -598,16 +670,7 @@ async function runRisk() {
   }
   $('run-risk').disabled = true;
   try {
-    const key = ds.bbox.join(',');
-    if (state.dem?.key !== key) {
-      // Pad the box so the river next to the area's edge is covered too.
-      const [w, s, e, n] = ds.bbox;
-      const pad = 0.01;
-      const dem = await loadDEM([w - pad, s - pad, e + pad, n + pad], {
-        onProgress: (done, total) => ($('risk-status').textContent = `Downloading elevation tiles… ${done}/${total}`),
-      });
-      state.dem = { key, dem };
-    }
+    await ensureDEM($('risk-status'));
     state.riskScenario = null;
     computeRisk(P);
   } catch (err) {
@@ -828,7 +891,10 @@ function runSVI() {
   classifyAndShowSVI();
   $('svi-toggle').checked = true;
   for (const id of ['svi-fill', 'svi-pt']) map.setLayoutProperty(id, 'visibility', 'visible');
+  for (const id of ['mh-fill', 'mh-pt']) map.setLayoutProperty(id, 'visibility', 'none');
+  $('mh-toggle').checked = false;
   renderSVI();
+  if (state.mh) combineMH(false);
 }
 
 function classifyAndShowSVI() {
@@ -845,6 +911,7 @@ $('svi-mode').addEventListener('change', () => {
   if (!state.sviDone) return;
   classifyAndShowSVI();
   renderSVI();
+  if (state.mh) combineMH(false);
 });
 
 function renderSVI() {
@@ -894,6 +961,246 @@ function clearSVI() {
 
 $('run-svi').addEventListener('click', runSVI);
 
+// ---- Multi-hazard risk ------------------------------------------------------------------------
+
+const HZ_SETTINGS = {
+  river: () => `100-yr level: ${floodLevel()} m (step 5)`,
+  coastal: () => '<label>Sea level + surge <input type="number" id="hz-coast" min="0" max="20" step="0.5" value="2" style="width:60px"> m</label>',
+  avalanche: () => '<label>Snow line <input type="number" id="hz-snow" min="0" max="7000" step="100" value="2500" style="width:72px"> m</label>',
+  earthquake: () => 'USGS catalogue + building type',
+  glof: () => 'Lakes ≤ 30 km upstream',
+};
+
+function floodLevel() {
+  const rows = [...document.querySelectorAll('#scenario-table tbody tr')].map((tr) => ({ rp: +tr.querySelector('.sc-rp').value, level: +tr.querySelector('.sc-level').value }));
+  const r100 = rows.find((r) => r.rp === 100) ?? rows.sort((a, b) => b.rp - a.rp)[0];
+  return r100?.level ?? 3;
+}
+
+$('hz-table').tBodies[0].innerHTML = Object.entries(HAZARDS).map(([k, h]) => `<tr>
+  <td><label><input type="checkbox" class="hz-use" value="${k}" checked> ${h.label}</label></td>
+  <td><input type="number" class="hz-w" data-k="${k}" min="0" max="1" step="0.1" value="1" aria-label="${h.label} weight" style="width:56px"></td>
+  <td class="setting" data-setting="${k}">${HZ_SETTINGS[k]?.() ?? ''}</td></tr>`).join('');
+$('scenario-table').addEventListener('change', () => (document.querySelector('[data-setting=river]').textContent = HZ_SETTINGS.river()));
+
+const lakeUploads = [];
+$('lake-file').accept = ACCEPT;
+$('lake-file').addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files?.length) return;
+  try {
+    const { features } = await readSpatialFiles(files);
+    const lakes = lakesFromFeatures(features);
+    if (!lakes.length) throw new Error('no points or polygons found');
+    lakeUploads.push(...lakes);
+    $('lake-status').textContent = `${lakeUploads.length} uploaded lake(s) will be included in the GLOF assessment.`;
+  } catch (err) {
+    $('lake-status').innerHTML = `<span class="warn">Could not read the lake file: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    e.target.value = '';
+  }
+});
+
+function mhWeights(use) {
+  return Object.fromEntries([...use].map((k) => [k, Math.min(1, Math.max(0, +document.querySelector(`.hz-w[data-k=${k}]`).value || 0))]));
+}
+
+async function runMH() {
+  const ds = state.dataset;
+  if (!ds) return;
+  const use = new Set([...document.querySelectorAll('.hz-use:checked')].map((i) => i.value));
+  if (!use.size) {
+    $('mh-status').innerHTML = '<span class="warn">Select at least one hazard.</span>';
+    return;
+  }
+  $('run-mh').disabled = true;
+  const t0 = performance.now();
+  try {
+    const dem = await ensureDEM($('mh-status'));
+    const ctxKey = `${ds.bbox.join(',')}|${lakeUploads.length}`;
+    if (state.hzCtx?.key !== ctxKey) {
+      const ctx = await loadHazardContext(ds.bbox, { extraLakes: lakeUploads, onStatus: (t) => ($('mh-status').textContent = t) });
+      state.hzCtx = { key: ctxKey, ctx };
+    }
+    if ($('hz-svi').checked && !state.sviDone) {
+      $('mh-status').textContent = 'Computing social vulnerability…';
+      runSVI();
+    }
+    $('mh-status').textContent = 'Scoring hazards for every building…';
+    await new Promise((r) => setTimeout(r, 20)); // let the status paint
+    const P = {
+      use,
+      floodLevel: floodLevel(),
+      coastLevel: +$('hz-coast').value || 2,
+      snowLine: +$('hz-snow').value || 2500,
+    };
+    const notes = scoreHazards(ds, dem, state.hzCtx.ctx, P);
+    state.mh = { use, notes, weights: mhWeights(use), ctx: state.hzCtx.ctx, ms: Math.round(performance.now() - t0), show: 'mhi' };
+    combineMH();
+    $('mh-status').textContent = `Scored ${fmt(ds.points.length)} buildings and facilities for ${use.size} hazards in ${(state.mh.ms / 1000).toFixed(1)}s (elevation zoom ${dem.z}).`;
+  } catch (err) {
+    $('mh-status').innerHTML = `<span class="warn">Multi-hazard analysis failed: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    $('run-mh').disabled = false;
+  }
+}
+
+// Recombine scores (weights, population or social vulnerability changed) and
+// redraw; `show` also switches the map to the multi-hazard layer.
+function combineMH(show = true) {
+  const mh = state.mh;
+  mh.weights = mhWeights(mh.use);
+  // Social vulnerability as shown on its map: rank within the area in relative
+  // mode, the absolute 0–1 score otherwise.
+  const relative = state.sviDone?.mode === 'relative';
+  const vuln = $('hz-svi').checked && state.sviDone ? (p) => (relative ? p.sviRank : p.svi) : null;
+  mh.keys = combine(state.dataset, mh.weights, mh.notes, vuln);
+  mh.matrix = riskMatrix(state.dataset, mh.keys);
+  renderMH();
+  if (show) showMHLayer();
+  else updateMHSource();
+}
+
+document.querySelector('#hz-table').addEventListener('change', (e) => {
+  if (state.mh && e.target.classList.contains('hz-w')) combineMH();
+});
+$('hz-svi').addEventListener('change', () => state.mh && combineMH());
+
+function renderMH() {
+  const ds = state.dataset;
+  const mh = state.mh;
+  const homes = ds.buildings.filter((b) => b.pop > 0 && b.hz);
+  const popOf = (f) => homes.filter(f).reduce((a, b) => a + b.pop, 0);
+  const total = popOf(() => true);
+  const highMHI = popOf((b) => b.mhi >= HIGH);
+  const multi = popOf((b) => b.highHazards >= 2);
+  const withRisk = homes.some((b) => b.risk != null);
+  const highRisk = popOf((b) => b.risk != null && b.risk >= 0.6);
+  let html = `
+    <div class="kpis">
+      <div class="kpi alert"><b>${fmt(Math.round(highMHI))}</b><span>residents at high multi-hazard level (${pctOf(highMHI, total)})</span></div>
+      <div class="kpi alert"><b>${fmt(Math.round(multi))}</b><span>residents facing two or more high hazards</span></div>
+      ${withRisk ? `<div class="kpi alert"><b>${fmt(Math.round(highRisk))}</b><span>residents at high or very high combined risk</span></div>` : ''}
+      <div class="kpi"><b>${fmt(Math.round(total))}</b><span>residents assessed</span></div>
+    </div>`;
+
+  const q = mh.ctx.quakes;
+  if (q && mh.use.has('earthquake')) {
+    const lvl = SCORE_CLASSES[scoreClass(q.score)].label.toLowerCase();
+    html += `<div class="sub">Earthquake hazard: ${lvl}</div>
+      <p class="note">${fmt(q.n150)} earthquakes of magnitude 5+ within 150 km since 1973 (about one every ${q.rate > 0 ? (1 / q.rate).toFixed(1) : '∞'} years).
+      ${q.maxNear ? `Largest within 100 km: M${q.maxNear.mag.toFixed(1)}, ${q.maxNear.year}, ${escapeHtml(q.maxNear.place ?? '')}.` : 'None of M5+ within 100 km since 1900.'}</p>`;
+    if (q.largest.length) {
+      html += `<table class="list"><tr><th>Largest within 300 km</th><th class="num">Mag.</th><th class="num">Year</th><th class="num">Distance</th></tr>
+        ${q.largest.slice(0, 5).map((e) => `<tr><td>${escapeHtml(e.place ?? '')}</td><td class="num">${e.mag.toFixed(1)}</td><td class="num">${e.year}</td><td class="num">${Math.round(e.dist)} km</td></tr>`).join('')}</table>`;
+    }
+  }
+
+  html += `<div class="sub">By hazard <span class="muted">(high = score ≥ ${HIGH})</span></div>
+    <table class="list"><tr><th>Hazard</th><th class="num">Homes</th><th class="num">Residents</th><th class="num">Critical</th><th class="num">Rating</th></tr>`;
+  for (const k of mh.use) {
+    if (mh.notes[k]) {
+      html += `<tr><td>${HAZARDS[k].label}</td><td colspan="4" class="muted small">${escapeHtml(mh.notes[k])}</td></tr>`;
+      continue;
+    }
+    const hi = homes.filter((b) => (b.hz[k] ?? 0) >= HIGH);
+    const crit = ds.facilities.filter((f) => (f.hz?.[k] ?? 0) >= HIGH && CRITICAL_GROUPS.has(f.group)).length;
+    const m = mh.matrix.find((x) => x.key === k);
+    html += `<tr><td>${HAZARDS[k].label}</td><td class="num">${fmt(hi.length)}</td><td class="num">${fmt(Math.round(hi.reduce((a, b) => a + b.pop, 0)))}</td><td class="num">${fmt(crit)}</td><td class="num">${m.rating}</td></tr>`;
+  }
+  html += '</table>';
+
+  // Likelihood × impact matrix.
+  const L = ['Rare', 'Unlikely', 'Possible', 'Likely', 'Almost certain'];
+  const I = ['Minimal', 'Minor', 'Moderate', 'Major', 'Severe'];
+  const ratingOf = (l, i) => { const s = l * i; return s <= 4 ? 'Low' : s <= 9 ? 'Medium' : s <= 16 ? 'High' : 'Extreme'; };
+  html += `<div class="sub">Risk matrix</div><table class="matrix" aria-label="Risk matrix: likelihood by impact"><tr><th class="rowh"></th>${I.map((t) => `<th>${t}</th>`).join('')}</tr>`;
+  for (let l = 5; l >= 1; l--) {
+    html += `<tr><th class="rowh">${L[l - 1]}</th>`;
+    for (let i = 1; i <= 5; i++) {
+      const r = ratingOf(l, i);
+      const here = mh.matrix.filter((m) => m.likelihood === l && m.impact === i).map((m) => HAZARDS[m.key].short);
+      html += `<td class="r-${r.toLowerCase()}" title="${r}"><b>${r}</b>${here.join('<br>')}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += `</table><p class="note">Likelihood comes from the 90th-percentile hazard score across homes. Impact comes from the share of residents at high hazard, raised one step if a health, education or emergency facility is exposed.</p>`;
+
+  // Residents by class for the index and the combined risk.
+  const cls = (f) => SCORE_CLASSES.map((c, i) => popOf((b) => f(b) != null && scoreClass(f(b)) === i));
+  const mhiC = cls((b) => b.mhi);
+  const riskC = withRisk ? cls((b) => b.risk) : null;
+  html += `<div class="sub">Residents by class</div><table class="list"><tr><th>Class</th><th class="num">Multi-hazard</th>${riskC ? '<th class="num">Combined risk</th>' : ''}</tr>
+    ${SCORE_CLASSES.map((c, i) => `<tr><td><span class="dot" style="background:${c.color}"></span>${c.label}</td><td class="num">${fmt(Math.round(mhiC[i]))}</td>${riskC ? `<td class="num">${fmt(Math.round(riskC[i]))}</td>` : ''}</tr>`).join('')}</table>`;
+  if (riskC) {
+    const rel = state.sviDone?.mode === 'relative' ? "; vulnerability is each home's rank within this area" : '';
+    html += `<p class="note">Combined risk = √(multi-hazard index × social vulnerability), as in INFORM${rel}. Hazard scores below ${NOISE_FLOOR} count as background and are not combined.</p>`;
+  }
+
+  const options = [['mhi', 'Multi-hazard index'], ...(withRisk ? [['risk', 'Combined risk (hazard × social vulnerability)']] : []),
+    ...mh.keys.map((k) => [k, HAZARDS[k].label])];
+  html += `<label class="field" style="margin-top:10px"><span>Show on map</span><select id="mh-show">${options.map(([v, t]) => `<option value="${v}" ${v === mh.show ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+    <div class="ramp">${SCORE_CLASSES.map((c) => `<span style="background:${c.color}" title="${c.label}"></span>`).join('')}</div>
+    <div class="row small muted" style="justify-content:space-between">${SCORE_CLASSES.map((c) => `<span>${c.label}</span>`).join('')}</div>
+    <div class="row" style="margin-top:8px"><button id="dl-mh-csv" class="btn">Multi-hazard CSV</button><button id="dl-mh-geojson" class="btn">GeoJSON (points)</button></div>
+    <p class="note">Screening estimates from ~30 m elevation, OpenStreetMap and the USGS catalogue. Verify hotspots in the field and with official hazard maps.</p>`;
+  $('mh-results').innerHTML = html;
+  $('mh-show').addEventListener('change', (e) => {
+    mh.show = e.target.value;
+    showMHLayer();
+  });
+  $('dl-mh-csv').addEventListener('click', () => download('openhvra-multi-hazard.csv', csvOf(mhRows()), 'text/csv'));
+  $('dl-mh-geojson').addEventListener('click', () => download('openhvra-multi-hazard.geojson', pointsGeoJSON(mhRows()), 'application/geo+json'));
+}
+
+function mhValue(p) {
+  const k = state.mh.show;
+  return k === 'mhi' ? p.mhi : k === 'risk' ? p.risk : p.hz?.[k];
+}
+
+function updateMHSource() {
+  const features = [];
+  for (const b of state.dataset.buildings) {
+    const v = mhValue(b);
+    if (v == null || (state.mh.show === 'risk' && b.pop <= 0)) continue;
+    features.push({ ...b.feature, properties: { fid: b.fid, v } });
+  }
+  map.getSource('mh').setData({ type: 'FeatureCollection', features });
+}
+
+function showMHLayer() {
+  updateMHSource();
+  // One building colouring at a time: hide flood depth and social vulnerability.
+  for (const [toggle, ids] of [['svi-toggle', ['svi-fill', 'svi-pt']], ['mh-toggle', ['mh-fill', 'mh-pt']]]) {
+    const on = toggle === 'mh-toggle';
+    $(toggle).checked = on;
+    for (const id of ids) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  }
+  const depth = document.querySelector('[data-layers="risk-fill,risk-pt"]');
+  depth.checked = false;
+  for (const id of ['risk-fill', 'risk-pt']) map.setLayoutProperty(id, 'visibility', 'none');
+}
+
+function mhRows() {
+  return state.dataset.points.filter((p) => p.hz).map((p) => {
+    const props = {};
+    for (const k of state.mh.keys) props[`hz_${k}`] = p.hz[k] != null ? Math.round(p.hz[k] * 100) / 100 : null;
+    props.multi_hazard = p.mhi != null ? Math.round(p.mhi * 100) / 100 : null;
+    props.high_hazards = p.highHazards;
+    if (p.risk != null) props.combined_risk = Math.round(p.risk * 100) / 100;
+    return { p, props };
+  });
+}
+
+function clearMH() {
+  state.mh = null;
+  map.getSource('mh')?.setData(EMPTY);
+  $('mh-results').innerHTML = '';
+  $('mh-status').textContent = '';
+}
+
+$('run-mh').addEventListener('click', runMH);
+
 // ---- Downloads (light: points, 6-decimal coordinates, essential fields) ------------------------
 
 function download(name, text, type) {
@@ -930,7 +1237,15 @@ function toCSV(rows) {
 }
 
 function exposureRows() {
-  return state.exposure.hits.map(({ p, d }) => ({ p, props: { distance_m: Math.round(d) } }));
+  const res = state.exposure;
+  const list = res.elevation ? res.all : res.hits;
+  return list.map(({ p, d, height, bank, ex }) => ({
+    p,
+    props: {
+      distance_m: Math.round(d),
+      ...(res.elevation ? { height_above_water_m: height != null ? r1(height) : null, bank_angle_deg: bank != null ? Math.round(bank) : null, exposure: ex } : {}),
+    },
+  }));
 }
 
 function riskRows() {
@@ -992,15 +1307,46 @@ $('legend').innerHTML =
   Object.values(FACILITY_GROUPS).map((d) => `<li><span class="dot" style="background:${d.color}"></span>${d.label}</li>`).join('') +
   '<li><span class="dot" style="background:#1c7ed6"></span>Waterway</li>' +
   '<li><span class="dot" style="background:#f59f00"></span>Major road</li>' +
-  '<li><span class="dot" style="background:#e03131"></span>Exposed feature</li>' +
+  '<li><span class="dot" style="background:#e03131"></span>Flood-exposed feature</li>' +
+  '<li><span class="dot" style="background:#f08c00"></span>Steep riverbank (erosion risk)</li>' +
   '<li><span class="dot" style="background:#ffd43b;outline:1px solid #1d2329"></span>Inside probe</li>' +
   '<li><span class="dot" style="background:#2a78d6"></span>Flooded building (darker = deeper)</li>' +
-  '<li><span class="dot" style="background:#b8481b"></span>Social vulnerability (darker = higher)</li>';
+  '<li><span class="dot" style="background:#b8481b"></span>Social vulnerability (darker = higher)</li>' +
+  '<li><span class="dot" style="background:#ad2b2b"></span>Multi-hazard / combined risk (darker = higher)</li>';
 
 $('panel-toggle').addEventListener('click', () => {
   $('panel').classList.toggle('collapsed');
   setTimeout(() => map.resize(), 50);
 });
+
+// ---- Welcome / how-to dialog ------------------------------------------------------------------
+
+const HELP_KEY = 'openhvra-help-hidden';
+function helpHidden() {
+  try {
+    return localStorage.getItem(HELP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+$('help-btn').addEventListener('click', () => {
+  $('help-hide').checked = helpHidden();
+  $('help').showModal();
+});
+$('help-close').addEventListener('click', () => $('help').close());
+$('help').addEventListener('close', () => {
+  try {
+    if ($('help-hide').checked) localStorage.setItem(HELP_KEY, '1');
+    else localStorage.removeItem(HELP_KEY);
+  } catch {
+    /* storage unavailable: the dialog simply shows again next time */
+  }
+});
+// Clicking the dimmed backdrop closes it too.
+$('help').addEventListener('click', (e) => {
+  if (e.target === $('help')) $('help').close();
+});
+if (!helpHidden()) $('help').showModal();
 
 // ---- Formatting -------------------------------------------------------------------------------
 

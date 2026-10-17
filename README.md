@@ -27,7 +27,7 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    - Buildings and the remaining layers download in parallel, falling back across public Overpass servers. Downloads are cached in the browser for 3 days, so reloading the same area is instant.
 2. **Population model**: estimates residents per building as residential floor area (footprint × storeys) ÷ floor area per person. Enter a census total to calibrate. Buildings are split into residential, commercial, industrial, public and ancillary classes.
 3. **Cursor probe**: a circle (25–1000 m) follows the mouse and shows live counts of residents, buildings and facilities, road and waterway length, and the distance to the nearest waterway and major road.
-4. **Exposure by distance**: counts and maps everything within *X* m of rivers, streams or roads, and lists the critical facilities at risk.
+4. **Exposure by distance**: counts and maps everything within *X* m of rivers, streams or roads, and lists the critical facilities at risk. For waterways, **elevation is used** (on by default): a building only counts as flood-exposed if it is also within a set height of the channel (default 5 m). Close-but-high buildings are split into **steep bank** (25° or steeper down to the water, so at risk of erosion or undercutting) and **higher ground** (not exposed). This avoids counting hillside homes in mountain valleys as flood-exposed.
 5. **Flood risk & risk finance**
    - **Hazard**: estimates flood depth at each building from its *height above the nearest waterway*, using open elevation data. You enter the water level for each return period, for example the 5-, 10-, 25-, 50-, 100- and 500-year floods.
    - **Vulnerability**: depth-damage curves for residential, commercial and industrial buildings (approximately the JRC global curves for Asia, Huizinga et al. 2017), applied to replacement cost per m² plus contents.
@@ -45,7 +45,22 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
      Homes are shown on the map in five classes, from very low to very high.
    - **Vulnerable groups**: children (0–14), elderly (65+), people with disabilities and people in extreme poverty. Their shares can be filled in automatically with national figures from the **World Bank** (disability uses the WHO global estimate of 16%), or entered by hand.
    - **Combined with the flood analysis**: residents flooded in each vulnerability class, the number of highly vulnerable residents flooded (for prioritisation), and the vulnerable groups in the flood zone.
-7. **Exports**: lightweight GeoJSON (points, coordinates rounded to 6 decimals, essential fields only) and CSV, for both the exposure results and the building-level risk results (depth, loss per scenario, AAL per building).
+7. **Multi-hazard risk**: every building gets a 0–1 score for each hazard:
+
+   | Hazard | How it is scored |
+   |---|---|
+   | River flood | Depth at the 100-year water level from step 5, using height above the nearest river |
+   | Flash / rain flood | Terrain hollows, flat ground, and nearby streams or drains |
+   | Landslide | Steepest slope nearby, local relief, and undercutting by streams or road cuts |
+   | Earthquake | Regional seismicity from the **USGS catalogue** (M5+ frequency since 1973, largest event within 100 km) × building vulnerability (material, storeys, fragile building types, steep or soft riverside ground). No shaking scenario is needed. |
+   | Coastal flood | Ground below a chosen sea level plus surge, within 10 km of the coast |
+   | Glacial lake outburst (GLOF) | Valley-floor buildings below, and within 30 km of, glacial lakes. Lakes come from OSM (water bodies within 3 km of glaciers) plus an optional uploaded lake inventory. |
+   | Snow avalanche | Steep (28–55°) slopes above a chosen snow line, using the alpha-angle runout rule |
+
+   The scores combine into a **multi-hazard index** (1 − Π(1 − weight × score)), so one severe hazard stays severe and several moderate ones add up. Together with social vulnerability, this gives a **combined risk** score (√(hazard × vulnerability), as in INFORM).
+
+   Results include a **likelihood × impact risk matrix**, homes and residents facing two or more high hazards, critical facilities exposed, maps for each hazard and for combined risk, and CSV/GeoJSON exports. Hazards that don't apply (no coast, no glaciers, no terrain above the snow line) are reported and left out.
+8. **Exports**: lightweight GeoJSON (points, coordinates rounded to 6 decimals, essential fields only) and CSV, for both the exposure results and the building-level risk results (depth, loss per scenario, AAL per building).
 
 **Facility categories** come from several OSM tag families, not just `amenity`. They include `healthcare`, `emergency`, `office=government`, `shop`, `tourism`, `historic`/`heritage`, `power`, `man_made`, `telecom`, `railway`, `aeroway` and `leisure`, plus road bridges. These are grouped as follows:
 
@@ -58,6 +73,8 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
 - markets, shops & finance
 - hazardous sites
 - other
+
+A **welcome window** explains what the app is and how to run an assessment step by step. It opens on a visitor's first visit, and the **How to use** link in the header reopens it.
 
 **Basemaps** are switched with the layers button on the map: OpenStreetMap, Humanitarian (HOT), Light, Topographic (OpenTopoMap) and Satellite (Esri).
 
@@ -81,6 +98,7 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 | `js/analysis.js` | `Dataset`: area clipping, population model, cursor probe, distance exposure |
 | `js/risk.js` | Elevation tiles, flood-depth model, depth-damage curves, AAL and risk-finance layers |
 | `js/spatial.js` | Projection, grid index, distance and geometry helpers |
+| `js/hazards.js` | Multi-hazard scoring, USGS and glacier/coast context data, multi-hazard index, combined risk, risk matrix |
 | `js/social.js` | Social Vulnerability Index, census join, World Bank demographic shares |
 | `js/upload.js` | Reading boundary files (Shapefile, GeoJSON, TopoJSON, KML/KMZ, GPX, GeoPackage, WKT), reprojection, simplification |
 | `js/draw.js`, `js/controls.js` | Area drawing tool, map toolbar and basemap switcher |
@@ -94,6 +112,7 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 - **OSM coverage varies.** Missing buildings mean missing people and losses. Check against the satellite basemap.
 - **Population** is a floor-area model. Calibrate it with a census or WorldPop total whenever you can.
 - **The flood hazard is a proxy.** "Height above nearest waterway" ignores flood defences, channel capacity, backwater effects and rainfall flooding. The elevation data is about 30 m resolution with several metres of vertical error, and often includes buildings and trees. Replace the default water levels with values from local hydrology or a flood study.
+- **The multi-hazard scores are terrain and map proxies.** They don't model hazards physically: there is no flow routing for flash floods or GLOFs (a lake in a neighbouring valley may be counted), no soil or rock data for landslides and earthquakes, and no snow climate for avalanches. Use them to find hotspots, then confirm with official hazard maps and field checks.
 - **The social vulnerability index uses proxies.** Where OSM is missing clinics, shelters or roads, areas look more vulnerable than they are. Vulnerable-group counts apply national shares evenly, so for local differences upload census data.
 - **The damage curves and costs are defaults.** Use national replacement costs, for example from the JRC or national statistics.
 - **AAL** comes from a handful of scenarios: no damage is assumed below the most frequent one, and the rarest one's loss is assumed for anything rarer.

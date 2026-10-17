@@ -144,6 +144,19 @@ table.inputs td { padding: 2px 4px 2px 0; }
 .warn { background: color-mix(in srgb, var(--danger) 12%, transparent); border-radius: 6px; padding: 6px 8px; }
 .note { font-size: 12px; color: var(--muted); margin: 6px 0; }
 
+#hz-table td { vertical-align: middle; }
+#hz-table td:first-child label { display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 13px; }
+#hz-table input[type=number] { padding: 4px 6px; }
+#hz-table .setting { font-size: 11px; color: var(--muted); }
+.matrix { border-collapse: separate; border-spacing: 2px; width: 100%; font-size: 11px; table-layout: fixed; }
+.matrix th { font-weight: 500; color: var(--muted); padding: 2px; text-align: center; }
+.matrix th.rowh { text-align: right; padding-right: 4px; width: 62px; }
+.matrix td { height: 38px; border-radius: 4px; text-align: center; vertical-align: middle; padding: 2px; line-height: 1.2; }
+.matrix td b { display: block; font-size: 10px; font-weight: 600; opacity: 0.85; }
+.matrix .r-low { background: #0ca30c; color: #0b0b0b; }
+.matrix .r-medium { background: #fab219; color: #0b0b0b; }
+.matrix .r-high { background: #ec835a; color: #0b0b0b; }
+.matrix .r-extreme { background: #d03b3b; color: #fff; }
 .check-list { display: grid; gap: 4px; font-size: 13px; }
 .check-list label { display: flex; gap: 6px; align-items: flex-start; cursor: pointer; }
 .check-list input { margin-top: 3px; }
@@ -200,6 +213,25 @@ table.inputs td { padding: 2px 4px 2px 0; }
 .maplibregl-popup-content { font: 12px/1.4 'Inter', system-ui, sans-serif; color: #1d2329; padding: 8px 10px; }
 .maplibregl-ctrl-attrib { font-size: 11px; }
 
+.linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+#help {
+  width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--bg); color: var(--fg); box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
+  display: none; flex-direction: column;
+}
+#help[open] { display: flex; }
+#help::backdrop { background: rgb(13 17 22 / 0.55); }
+.help-body { overflow-y: auto; padding: 22px 26px 8px; font-size: 14px; }
+.help-body h2 { margin: 0; font-size: 22px; }
+.help-body h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 6px; }
+.help-body .help-tag { margin: 2px 0 12px; font-weight: 500; color: var(--muted); }
+.help-body ul, .help-body ol { padding-left: 20px; margin: 0; }
+.help-body li { margin: 5px 0; }
+.help-body .help-credit { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; margin-top: 16px; }
+.help-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 26px; border-top: 1px solid var(--line); font-size: 13px; }
+.help-foot label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
 #panel-toggle { display: none; }
 
 @media (max-width: 760px) {
@@ -210,4 +242,6 @@ table.inputs td { padding: 2px 4px 2px 0; }
   #panel-toggle { display: block; position: absolute; left: 50px; top: 10px; z-index: 3; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); }
   section, .brand, footer, summary, details > .body { padding-left: 16px; padding-right: 16px; }
   .draw-hint { top: 52px; max-width: calc(100% - 32px); }
+  .help-body { padding: 16px 16px 6px; }
+  .help-foot { padding: 10px 16px; }
 }

@@ -368,6 +368,7 @@ export function parseOSM(elements) {
       out.buildings.push(feature(closed ? { type: 'Polygon', coordinates: [coords] } : asPoint, center, {
         fid: ++fid, osm_id, kind: 'building', cls: buildingClass(t), type: t.building === 'yes' ? 'building' : t.building, name,
         levels: parseLevels(t['building:levels']), area: area ? Math.round(area) : null,
+        material: t['building:material'] ?? t['building:structure'] ?? t['building:walls'] ?? '',
       }));
       continue; // Building tags arrive with the buildings query; facilities come from the network query.
     }

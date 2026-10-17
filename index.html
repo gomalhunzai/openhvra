@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenHVRA: Hazard, Vulnerability &amp; Risk Assessment</title>
   <meta name="author" content="Gomal Amin">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b6bcb'/%3E%3Cpath d='M5 23l7-11 5 7 3-4 7 8z' fill='%23fff'/%3E%3Ccircle cx='22' cy='9' r='3' fill='%23ffd43b'/%3E%3C/svg%3E">
   <meta name="description" content="OpenHVRA: Hazard, Vulnerability & Risk Assessment from open data. Explore OpenStreetMap buildings, people, facilities, roads and waterways, and estimate flood risk and risk-finance needs. Free tool for disaster risk practitioners.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
@@ -18,7 +19,7 @@
       <h1>OpenHVRA</h1>
       <p class="tagline">Hazard, Vulnerability &amp; Risk Assessment from open data</p>
       <p>How many people, buildings and facilities are near rivers, streams and roads, and what could a flood cost? Built on open data.</p>
-      <p class="byline">By <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a></p>
+      <p class="byline">By <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a> · <button type="button" id="help-btn" class="linklike" aria-haspopup="dialog">How to use</button></p>
     </header>
 
     <section>
@@ -96,6 +97,10 @@
         <div class="grid2">
           <label class="field"><span>Hazard source</span><select id="source"></select></label>
           <label class="field"><span>Within (m)</span><input id="dist" type="number" min="5" max="2000" step="5" value="100"></label>
+        </div>
+        <div id="elev-opts" class="grid2">
+          <label class="field check" style="padding-top:0"><input type="checkbox" id="use-elev" checked><span>Use elevation: leave out buildings well above the water</span></label>
+          <label class="field"><span>Max height (m)</span><input id="max-height" type="number" min="0" max="100" step="0.5" value="5"></label>
         </div>
         <button id="run" class="btn primary block" disabled>Run exposure analysis</button>
         <div id="exposure-results" class="stats"></div>
@@ -193,6 +198,27 @@
     </details>
 
     <details>
+      <summary><span class="step">7</span> Multi-hazard risk</summary>
+      <div class="body">
+        <p class="muted small">Scores every building from 0 to 1 for each hazard using terrain, OpenStreetMap and the USGS earthquake catalogue. The scores are combined into a multi-hazard index and, together with social vulnerability, into a combined risk score. These are screening estimates, not engineering hazard models.</p>
+        <table class="inputs" id="hz-table">
+          <thead><tr><th>Hazard</th><th>Weight</th><th>Setting</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="upload-row">
+          <label class="btn" for="lake-file">Add glacial lake inventory</label>
+          <input type="file" id="lake-file" multiple hidden>
+          <span class="muted small">Optional: lake points or polygons (e.g. ICIMOD inventory) for GLOF, as OSM maps few glacial lakes.</span>
+        </div>
+        <p id="lake-status" class="note"></p>
+        <label class="field check"><input type="checkbox" id="hz-svi" checked><span>Combine with social vulnerability (step 6)</span></label>
+        <button id="run-mh" class="btn primary block" disabled>Run multi-hazard analysis</button>
+        <p id="mh-status" class="note"></p>
+        <div id="mh-results" class="stats"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>Layers &amp; legend</summary>
       <div class="body">
         <div class="toggles">
@@ -203,6 +229,7 @@
           <label><input type="checkbox" data-layers="buffer,exposed-fill,exposed-pt" checked> Exposure</label>
           <label><input type="checkbox" data-layers="risk-fill,risk-pt" checked> Flood depth</label>
           <label><input type="checkbox" id="svi-toggle" data-layers="svi-fill,svi-pt" checked> Social vulnerability</label>
+          <label><input type="checkbox" id="mh-toggle" data-layers="mh-fill,mh-pt" checked> Multi-hazard</label>
         </div>
         <ul id="legend" class="legend"></ul>
       </div>
@@ -214,6 +241,50 @@
       All figures are screening estimates from mapped data and may be incomplete. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Help improve the map</a>.
     </footer>
   </aside>
+
+  <dialog id="help" aria-labelledby="help-title">
+    <div class="help-body">
+      <h2 id="help-title">Welcome to OpenHVRA</h2>
+      <p class="help-tag">Hazard, Vulnerability &amp; Risk Assessment from open data</p>
+      <p>OpenHVRA is a free web tool for disaster risk practitioners. It runs a rapid, screening-level <b>hazard, vulnerability and risk assessment</b> for any place on Earth using open data: OpenStreetMap buildings, facilities, roads and rivers, open elevation data, the USGS earthquake catalogue and World Bank demographics. There is nothing to install, and the files you upload stay in your browser.</p>
+
+      <h3>What it can tell you</h3>
+      <ul>
+        <li>How many <b>people, buildings and critical facilities</b> are near rivers, streams or roads, live as you move the mouse.</li>
+        <li>The <b>estimated population</b> of every building.</li>
+        <li><b>Flood depth, losses and average annual loss</b>, and how to finance them (reserve funds, contingent credit, insurance).</li>
+        <li>A <b>social vulnerability index</b>, and counts of children, elderly people, people with disabilities and people in poverty.</li>
+        <li><b>Multi-hazard</b> scores for river and flash floods, landslides, earthquakes, coastal floods, glacial lake outbursts and avalanches, plus a <b>combined risk</b> map and a risk matrix.</li>
+      </ul>
+
+      <h3>How to run an assessment</h3>
+      <ol>
+        <li><b>Find your area.</b> Search for a place, or zoom in on the map.</li>
+        <li><b>Select the area</b> (step 1). Draw a <i>rectangle</i>, <i>circle</i> or <i>polygon</i> with the buttons in the panel or the toolbar at the map's top-left. You can also <i>upload a boundary file</i> (zipped Shapefile, GeoJSON, KML/KMZ, GPX, GeoPackage or WKT), drop one on the map, or use the current view. Areas can be up to 60 km² in <i>Light</i> mode or 25 km² with <i>Footprints</i>.</li>
+        <li><b>Load OSM data.</b> Tick the layers you need and click <i>Load OSM data</i>. It takes from 10 seconds to a couple of minutes, depending on the public servers. Loaded areas are saved in your browser for 3 days.</li>
+        <li><b>Check the population model</b> (step 2). Adjust the floor area per person and the default number of storeys, or enter a census total to calibrate.</li>
+        <li><b>Explore.</b> Move the mouse over the map to see live counts within the chosen radius, and click to pin the circle. Step 4 counts everything within a set distance of rivers or roads. For rivers, it also uses elevation to leave out buildings well above the water and to flag buildings on steep, erodible banks.</li>
+        <li><b>Flood risk and risk finance</b> (step 5). Enter the water level for each return period and the local construction costs, then run it to get losses, the loss curve, average annual loss and the financing layers.</li>
+        <li><b>Social vulnerability</b> (step 6). Click <i>Use national figures</i> to fill in the vulnerable-group shares, optionally upload a census layer such as poverty by ward, then compute.</li>
+        <li><b>Multi-hazard risk</b> (step 7). Choose the hazards and their weights, optionally add a glacial lake inventory, then run it to see the risk matrix, the hotspots and the combined risk map.</li>
+        <li><b>Export.</b> Each step has CSV and GeoJSON downloads you can open in Excel or QGIS. Hover over any building or facility for its details, and use the layers button on the map to change the basemap.</li>
+      </ol>
+
+      <h3>Good practice</h3>
+      <ul>
+        <li>Start with a single village or ward, then expand.</li>
+        <li>Replace the default water levels, costs and shares with local data.</li>
+        <li>Results depend on how completely OpenStreetMap covers your area. Check against the satellite basemap and <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">help improve the map</a>.</li>
+        <li>These are screening estimates for prioritisation. Verify hotspots in the field and against official hazard maps.</li>
+      </ul>
+
+      <p class="help-credit">Data: © OpenStreetMap contributors (ODbL), Overpass API, AWS Terrain Tiles, USGS, World Bank, Nominatim. Created by <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a>. Source code: <a href="https://github.com/gomalhunzai/openhvra" target="_blank" rel="noopener">GitHub</a>.</p>
+    </div>
+    <div class="help-foot">
+      <label><input type="checkbox" id="help-hide"> Don't show this again</label>
+      <button type="button" id="help-close" class="btn primary">Get started</button>
+    </div>
+  </dialog>
 
   <main id="map"></main>
   <button id="panel-toggle" class="btn" aria-controls="panel">Panel</button>

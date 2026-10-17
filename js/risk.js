@@ -66,6 +66,16 @@ export class DEM {
   _px(lon, lat) {
     return [lonToPx(lon, this.z) - this.x0 * 256 - 0.5, latToPx(lat, this.z) - this.y0 * 256 - 0.5];
   }
+  // Pixel-space access for analyses that sample many nearby points.
+  pixel(lon, lat) {
+    return this._px(lon, lat);
+  }
+  sample(px, py) {
+    return this._sample(px, py);
+  }
+  metresPerPixel(lat) {
+    return (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** this.z);
+  }
   elev(lon, lat) {
     return this._sample(...this._px(lon, lat));
   }

@@ -158,6 +158,19 @@ export function computeSVI(ds, use, census) {
 export function classifySVI(ds, mode) {
   const homes = ds.buildings.filter((b) => b.pop > 0 && b.svi != null);
   let breaks = SVI_CLASSES.slice(0, -1).map((c) => c.max);
+  // Percentile rank within the area (0 = least, 1 = most vulnerable home).
+  const sorted = homes.map((b) => b.svi).sort((a, b) => a - b);
+  for (const b of ds.buildings) b.sviRank = null;
+  for (const b of homes) {
+    let lo = 0;
+    let hi = sorted.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid] < b.svi) lo = mid + 1;
+      else hi = mid;
+    }
+    b.sviRank = sorted.length > 1 ? lo / (sorted.length - 1) : 0.5;
+  }
   if (mode === 'relative' && homes.length) {
     const v = homes.map((b) => b.svi).sort((a, b) => a - b);
     breaks = [0.2, 0.4, 0.6, 0.8].map((q) => v[Math.min(v.length - 1, Math.floor(q * v.length))]);

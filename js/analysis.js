@@ -189,19 +189,36 @@ export class Dataset {
   }
 
   // Every building/facility whose centre lies within `dist` m of a source line.
-  exposure(sourceKey, dist) {
+  // With `dem` (waterway sources), features close by but more than `maxHeight`
+  // above the channel are not flood-exposed: they are split into "bank" (on a
+  // slope of ≥ `bankAngle`° down to the water, at risk of erosion or
+  // undercutting) and "high" (above the water on stable ground).
+  exposure(sourceKey, dist, { dem = null, maxHeight = 5, bankAngle = 25 } = {}) {
     const pred = SOURCES[sourceKey].pred;
-    const hits = [];
+    const all = [];
     for (const p of this.points) {
-      let best = Infinity;
+      let best = null;
       this.segIndex.query(p.x - dist, p.y - dist, p.x + dist, p.y + dist, (s) => {
         if (!pred(s.line)) return;
-        const { d } = nearestOnSeg(p.x, p.y, s.ax, s.ay, s.bx, s.by);
-        if (d < best) best = d;
+        const hit = nearestOnSeg(p.x, p.y, s.ax, s.ay, s.bx, s.by);
+        if (!best || hit.d < best.d) best = hit;
       });
-      if (best <= dist) hits.push({ p, d: best });
+      if (best && best.d <= dist) all.push({ p, d: best.d, at: this.proj.toLonLat(best.x, best.y), ex: 'flood' });
     }
-    hits.sort((a, b) => a.d - b.d);
+    if (dem) {
+      for (const h of all) {
+        const ground = dem.elev(...h.p.feature.center);
+        const channel = dem.minAround(h.at[0], h.at[1], 2);
+        if (!Number.isFinite(ground) || !Number.isFinite(channel)) continue;
+        h.height = Math.max(0, ground - channel);
+        h.bank = (Math.atan2(h.height, Math.max(h.d, 1)) * 180) / Math.PI;
+        if (h.height > maxHeight) h.ex = h.bank >= bankAngle ? 'bank' : 'high';
+      }
+    }
+    all.sort((a, b) => a.d - b.d);
+    const hits = all.filter((h) => h.ex === 'flood');
+    const bank = all.filter((h) => h.ex === 'bank');
+    const high = all.filter((h) => h.ex === 'high');
     const groups = {};
     let buildings = 0;
     let pop = 0;
@@ -211,11 +228,21 @@ export class Dataset {
         pop += p.pop;
       } else groups[p.group] = (groups[p.group] ?? 0) + 1;
     }
+    const tally = (list) => ({
+      buildings: list.filter((h) => h.p.kind === 'building').length,
+      pop: list.reduce((a, h) => a + (h.p.pop ?? 0), 0),
+      facilities: list.filter((h) => h.p.kind === 'facility').length,
+    });
     const sourceLines = this.lines.filter(pred);
     return {
       sourceKey,
       dist,
+      elevation: !!dem,
+      maxHeight,
+      all,
       hits,
+      bank: tally(bank),
+      high: tally(high),
       buildings,
       pop,
       groups,
