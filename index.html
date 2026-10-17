@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpenHVRA: Hazard, Vulnerability &amp; Risk Assessment</title>
   <meta name="author" content="Gomal Amin">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b6bcb'/%3E%3Cpath d='M5 23l7-11 5 7 3-4 7 8z' fill='%23fff'/%3E%3Ccircle cx='22' cy='9' r='3' fill='%23ffd43b'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/logo-mark.png">
+  <meta property="og:title" content="OpenHVRA: Hazard, Vulnerability & Risk Assessment from open data">
+  <meta property="og:description" content="Free web tool for disaster risk practitioners: exposure, population, flood risk, social vulnerability and multi-hazard risk for any place, from OpenStreetMap and other open data.">
+  <meta property="og:image" content="https://gomalhunzai.github.io/openhvra/assets/og-image.jpg">
+  <meta property="og:url" content="https://gomalhunzai.github.io/openhvra/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="description" content="OpenHVRA: Hazard, Vulnerability & Risk Assessment from open data. Explore OpenStreetMap buildings, people, facilities, roads and waterways, and estimate flood risk and risk-finance needs. Free tool for disaster risk practitioners.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
@@ -16,8 +23,7 @@
 <body>
   <aside id="panel">
     <header class="brand">
-      <h1>OpenHVRA</h1>
-      <p class="tagline">Hazard, Vulnerability &amp; Risk Assessment from open data</p>
+      <h1 class="brand-logo"><img src="assets/logo.jpg" width="720" height="455" alt="OpenHVRA: Hazard, Vulnerability &amp; Risk Assessment from Open Data"></h1>
       <p>How many people, buildings and facilities are near rivers, streams and roads, and what could a flood cost? Built on open data.</p>
       <p class="byline">By <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a> · <button type="button" id="help-btn" class="linklike" aria-haspopup="dialog">How to use</button></p>
     </header>
@@ -241,8 +247,8 @@
 
   <dialog id="help" aria-labelledby="help-title">
     <div class="help-body">
+      <img class="help-logo" src="assets/logo.jpg" width="720" height="455" alt="OpenHVRA: Hazard, Vulnerability &amp; Risk Assessment from Open Data">
       <h2 id="help-title">Welcome to OpenHVRA</h2>
-      <p class="help-tag">Hazard, Vulnerability &amp; Risk Assessment from open data</p>
       <p>OpenHVRA is a free web tool for disaster risk practitioners. It runs a rapid, screening-level <b>hazard, vulnerability and risk assessment</b> for any place on Earth using open data: OpenStreetMap buildings, facilities, roads and rivers, open elevation data, the USGS earthquake catalogue and World Bank demographics. There is nothing to install, and the files you upload stay in your browser.</p>
 
       <h3>What it can tell you</h3>

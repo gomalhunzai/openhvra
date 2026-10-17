@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.jpg" alt="OpenHVRA: Hazard, Vulnerability &amp; Risk Assessment from Open Data" width="480"></p>
+
 # OpenHVRA
 
 *Hazard, Vulnerability & Risk Assessment from open data*
