@@ -292,13 +292,8 @@ table.calc th { white-space: normal; vertical-align: bottom; }
   background: #fab219; color: #0b0b0b; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
 }
 .beta-note {
-  position: relative; margin-top: 10px; padding: 8px 30px 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.45;
+  position: relative; margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.45;
   background: color-mix(in srgb, #fab219 14%, transparent); border-left: 3px solid #fab219; color: var(--fg);
 }
 .beta-note p { margin: 0; }
-.beta-note.in-help { padding-right: 10px; margin: 10px 0 12px; font-size: 13px; }
-.beta-close {
-  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 4px;
-  background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1;
-}
-.beta-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.beta-note.in-help { margin: 10px 0 12px; font-size: 13px; }

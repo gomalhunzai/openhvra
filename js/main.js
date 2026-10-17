@@ -1426,23 +1426,6 @@ $('dl-buildings').addEventListener('click', () => download(`openhvra-buildings-$
 $('dl-facilities').addEventListener('click', () => download(`openhvra-facilities-${stamp()}.csv`, facilitiesCSV(snapshot()), 'text/csv'));
 $('dl-matrix').addEventListener('click', () => download(`openhvra-risk-matrix-${stamp()}.csv`, matrixCSV(snapshot()), 'text/csv'));
 
-// ---- Beta notice (dismissible; the Beta tag beside the name stays) ------------------------------
-
-const BETA_KEY = 'openhvra-beta-hidden';
-try {
-  if (localStorage.getItem(BETA_KEY) === '1') $('beta-note').hidden = true;
-} catch {
-  /* storage unavailable: keep showing the notice */
-}
-$('beta-close').addEventListener('click', () => {
-  $('beta-note').hidden = true;
-  try {
-    localStorage.setItem(BETA_KEY, '1');
-  } catch {
-    /* not remembered */
-  }
-});
-
 // ---- Welcome / how-to dialog ------------------------------------------------------------------
 
 const HELP_KEY = 'openhvra-help-hidden';
