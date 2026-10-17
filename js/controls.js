@@ -4,6 +4,7 @@ const ICONS = {
   rect: '<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>',
   circle: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>',
   polygon: '<svg viewBox="0 0 24 24"><path d="M12 3l8.5 6.2-3.2 10H6.7L3.5 9.2z"/></svg>',
+  upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg>',
   layers: '<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
 };
@@ -20,9 +21,10 @@ function button(icon, title, onClick) {
 }
 
 export class DrawControl {
-  constructor({ onDraw, onClear }) {
+  constructor({ onDraw, onClear, onUpload }) {
     this.onDraw = onDraw;
     this.onClear = onClear;
+    this.onUpload = onUpload;
     this.buttons = {};
   }
   onAdd() {
@@ -31,6 +33,7 @@ export class DrawControl {
     for (const [mode, title] of [['rect', 'Select area: rectangle'], ['circle', 'Select area: circle'], ['polygon', 'Select area: polygon']]) {
       div.appendChild((this.buttons[mode] = button(mode, title, () => this.onDraw(mode))));
     }
+    div.appendChild(button('upload', 'Upload area boundary (Shapefile zip, GeoJSON, KML, KMZ, GPX, GeoPackage, WKT)', () => this.onUpload()));
     div.appendChild(button('trash', 'Clear selected area (use the current view)', () => this.onClear()));
     return (this.el = div);
   }

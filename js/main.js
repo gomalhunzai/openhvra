@@ -5,6 +5,7 @@ import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, D
 import { DrawTool } from './draw.js';
 import { DrawControl, BasemapControl } from './controls.js';
 import { lossCurve } from './chart.js';
+import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel, ACCEPT } from './upload.js';
 
 const MAX_AREA_KM2 = { light: 60, footprints: 25 };
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -20,7 +21,7 @@ const DEPTH_CLASSES = [
 
 const state = {
   dataset: null,
-  aoi: null, // drawn area { type, ring, center?, radius? } or null for the current view
+  aoi: null, // selected area { type, polygons, name?, radius? } or null for the current view
   radius: 100,
   pinned: false,
   last: null,
@@ -69,7 +70,7 @@ const draw = new DrawTool(map, {
     if (!text) drawCtrl.setActive(null);
   },
 });
-const drawCtrl = new DrawControl({ onDraw: startDraw, onClear: () => setAoi(null) });
+const drawCtrl = new DrawControl({ onDraw: startDraw, onClear: () => setAoi(null), onUpload: () => $('upload-file').click() });
 map.addControl(drawCtrl, 'top-left');
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.addControl(new BasemapControl(BASEMAPS, 'osm', (id) => {
@@ -157,15 +158,22 @@ function startDraw(mode) {
   draw.start(mode);
 }
 
+// `shape` is a drawn shape ({ type, ring, ... }) or an upload ({ type: 'upload',
+// polygons, name }); both are stored with `polygons` as [[outer, ...holes], ...].
 function setAoi(shape) {
   draw.cancel(false);
-  state.aoi = shape;
-  map.getSource('aoi')?.setData(shape ? { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [shape.ring] } } : EMPTY);
+  if (shape?.type !== 'upload') $('upload-feature').classList.add('hidden');
+  state.aoi = shape && { ...shape, polygons: shape.polygons ?? [[shape.ring]] };
+  map.getSource('aoi')?.setData(state.aoi ? { type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: state.aoi.polygons } } : EMPTY);
   updateAoiInfo();
 }
 
+function aoiArea(polygons) {
+  return polygons.reduce((a, [outer, ...holes]) => a + lonLatArea(outer) - holes.reduce((h, r) => h + lonLatArea(r), 0), 0);
+}
+
 function currentBBox() {
-  if (state.aoi) return ringBBox(state.aoi.ring).map((v) => +v.toFixed(6));
+  if (state.aoi) return ringBBox(state.aoi.polygons.map((p) => p[0]).flat()).map((v) => +v.toFixed(6));
   const b = map.getBounds();
   return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => +v.toFixed(6));
 }
@@ -178,12 +186,13 @@ function updateAoiInfo() {
   const bbox = currentBBox();
   const box = bboxAreaKm2(bbox);
   const limit = MAX_AREA_KM2[buildingDetail()];
-  const names = { rect: 'Rectangle', circle: 'Circle', polygon: 'Polygon' };
+  const names = { rect: 'Rectangle', circle: 'Circle', polygon: 'Polygon', upload: 'Uploaded area' };
   let text;
   if (state.aoi) {
-    const area = lonLatArea(state.aoi.ring) / 1e6;
-    text = `<b>${names[state.aoi.type]}</b>: ${area.toFixed(2)} km²`;
+    const area = aoiArea(state.aoi.polygons) / 1e6;
+    text = `<b>${names[state.aoi.type]}</b>${state.aoi.name ? ` (${escapeHtml(state.aoi.name)})` : ''}: ${area.toFixed(2)} km²`;
     if (state.aoi.radius) text += ` (radius ${m(state.aoi.radius)})`;
+    if (state.aoi.usedBBox) text += '. The file had no polygons, so its bounding box is used.';
   } else if (box > limit * 20) {
     // Far too large to be a plausible area (e.g. the initial world view): guide rather than warn.
     text = `Search for a place or zoom in to your area of interest, then draw an area or use the view (up to ${limit} km²).`;
@@ -201,6 +210,65 @@ map.on('moveend', () => {
   if (!state.aoi) updateAoiInfo();
 });
 document.querySelectorAll('[data-draw]').forEach((b) => b.addEventListener('click', () => startDraw(b.dataset.draw)));
+
+// ---- Uploaded boundary files ---------------------------------------------------------------
+
+const upload = { features: [], format: '' };
+$('upload-file').accept = ACCEPT;
+
+async function handleUpload(files) {
+  if (!files?.length) return;
+  const label = [...files].map((f) => f.name).join(', ');
+  $('aoi-info').innerHTML = `Reading <b>${escapeHtml(label)}</b>…`;
+  try {
+    const { features, format } = await readSpatialFiles(files);
+    const polys = polygonFeatures(features);
+    upload.features = polys.length ? polys : features;
+    upload.format = format;
+    const sel = $('upload-feature');
+    if (polys.length > 1) {
+      sel.innerHTML = `<option value="all">All ${polys.length} areas in the file</option>` +
+        polys.slice(0, 1000).map((f, i) => `<option value="${i}">${escapeHtml(featureLabel(f, i))}</option>`).join('');
+      sel.classList.remove('hidden');
+    } else {
+      sel.classList.add('hidden');
+    }
+    selectUploaded('all');
+    setStatus(`Read ${fmt(features.length)} feature${features.length === 1 ? '' : 's'} from ${escapeHtml(label)} (${format}).` +
+      (polys.length > 1 ? ' Pick one area from the list, or keep all of them.' : ''));
+  } catch (err) {
+    $('aoi-info').innerHTML = `<span class="warn">Could not read ${escapeHtml(label)}: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    $('upload-file').value = '';
+  }
+}
+
+function selectUploaded(value) {
+  const feats = value === 'all' ? upload.features : [upload.features[+value]];
+  const { polygons, usedBBox } = toAoiPolygons(feats);
+  const name = value === 'all' ? (feats.length === 1 ? featureLabel(feats[0], 0) : `${feats.length} areas`) : featureLabel(feats[0], +value);
+  setAoi({ type: 'upload', polygons, name, usedBBox });
+  const [w, s, e, n] = currentBBox();
+  map.fitBounds([[w, s], [e, n]], { padding: 40, duration: 800, maxZoom: 17 });
+}
+
+$('upload-file').addEventListener('change', (e) => handleUpload(e.target.files));
+$('upload-feature').addEventListener('change', (e) => selectUploaded(e.target.value));
+
+// Drag and drop a file anywhere on the map.
+const mapEl = $('map');
+mapEl.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  mapEl.classList.add('dropping');
+});
+mapEl.addEventListener('dragleave', (e) => {
+  if (!mapEl.contains(e.relatedTarget)) mapEl.classList.remove('dropping');
+});
+mapEl.addEventListener('drop', (e) => {
+  e.preventDefault();
+  mapEl.classList.remove('dropping');
+  handleUpload(e.dataTransfer.files);
+});
 document.querySelectorAll('input[name=bdetail]').forEach((r) => r.addEventListener('change', updateAoiInfo));
 
 // ---- Loading data -------------------------------------------------------------------------
@@ -238,7 +306,7 @@ async function loadData() {
         setStatus(Object.entries(parts).map(([k, v]) => `${names[k]}: ${v}`).join('<br>'));
       },
     });
-    const ds = new Dataset(parsed, bbox, state.aoi?.ring);
+    const ds = new Dataset(parsed, bbox, state.aoi?.polygons);
     state.dataset = ds;
     state.byFid = new Map(ds.points.map((p) => [p.fid, p]));
     state.dem = null;

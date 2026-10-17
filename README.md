@@ -10,6 +10,17 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
 
 1. **Area & data**
    - Choose an area by drawing a **rectangle**, **circle** or **polygon** (with the buttons in the panel or the toolbar at the map's top-left), or use the current view.
+   - Or **upload a boundary file**, or drag and drop one onto the map. Supported formats:
+     - Shapefile, as a `.zip` or as `.shp` + `.dbf` + `.prj` selected together
+     - GeoJSON and TopoJSON
+     - KML and KMZ
+     - GPX
+     - GeoPackage (`.gpkg`)
+     - WKT
+
+     Files in Web Mercator or UTM, and shapefiles or GeoPackages with their coordinate system defined, are converted to longitude/latitude automatically.
+   - If a file contains several areas (for example all wards of a district), pick one from the list or use them all. Multi-part areas and holes are supported, and very detailed boundaries are simplified automatically. A file with no polygons (points or a GPX track) uses its bounding box.
+   - The libraries that read these formats only download the first time you upload that type of file.
    - Pick which layers to download. **Light** mode (the default) downloads building bounding boxes instead of full footprints, which is about 3× smaller, and estimates each building's area from its box. Facilities are downloaded as centre points only.
    - Buildings and the remaining layers download in parallel, falling back across public Overpass servers. Downloads are cached in the browser for 3 days, so reloading the same area is instant.
 2. **Population model**: estimates residents per building as residential floor area (footprint × storeys) ÷ floor area per person. Enter a census total to calibrate. Buildings are split into residential, commercial, industrial, public and ancillary classes.
@@ -56,6 +67,7 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 | `js/analysis.js` | `Dataset`: area clipping, population model, cursor probe, distance exposure |
 | `js/risk.js` | Elevation tiles, flood-depth model, depth-damage curves, AAL and risk-finance layers |
 | `js/spatial.js` | Projection, grid index, distance and geometry helpers |
+| `js/upload.js` | Reading boundary files (Shapefile, GeoJSON, TopoJSON, KML/KMZ, GPX, GeoPackage, WKT), reprojection, simplification |
 | `js/draw.js`, `js/controls.js` | Area drawing tool, map toolbar and basemap switcher |
 | `js/chart.js` | Loss-exceedance curve (SVG) |
 | `js/main.js` | Map, layers and UI |

@@ -107,6 +107,13 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
 
 .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .seg .btn { padding: 6px 4px; font-size: 13px; }
+.upload-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; margin-top: 8px; }
+.upload-row .btn { white-space: nowrap; }
+#upload-feature { margin-top: 8px; }
+#map.dropping::after {
+  content: 'Drop a boundary file to use it as the area'; position: absolute; inset: 0; z-index: 5; display: grid; place-items: center;
+  background: rgb(112 72 232 / 0.18); border: 3px dashed #7048e8; color: #1d2329; font: 600 16px 'Inter', system-ui, sans-serif; pointer-events: none;
+}
 .radio-row { display: grid; gap: 4px; margin: 6px 0 8px; font-size: 13px; }
 .radio-row label { cursor: pointer; }
 

@@ -36,6 +36,12 @@
           <button type="button" class="btn" data-draw="polygon">Polygon</button>
           <button type="button" class="btn" data-draw="view">Current view</button>
         </div>
+        <div class="upload-row">
+          <label class="btn" for="upload-file">Upload boundary file</label>
+          <input type="file" id="upload-file" multiple hidden>
+          <span class="muted small">Shapefile (.zip or .shp + .dbf + .prj), GeoJSON, KML, KMZ, GPX, GeoPackage or WKT. You can also drop a file on the map.</span>
+        </div>
+        <select id="upload-feature" class="hidden" aria-label="Area from uploaded file"></select>
         <p id="aoi-info" class="small"></p>
 
         <div class="sub">What to download</div>

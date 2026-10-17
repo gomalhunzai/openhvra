@@ -1,7 +1,7 @@
 // Spatial analysis over a loaded OSM extract: population model, live cursor
 // probe and whole-area exposure (features within X m of a hazard source).
 
-import { makeProjection, GridIndex, nearestOnSeg, segLenInCircle, pointInRing } from './spatial.js';
+import { makeProjection, GridIndex, nearestOnSeg, segLenInCircle, pointInRing, ringBBox } from './spatial.js';
 
 export const SOURCES = {
   water_all: { label: 'All waterways', short: 'any waterway', pred: (l) => l.kind === 'water' },
@@ -21,13 +21,19 @@ export const DEFAULT_POP = {
 };
 
 export class Dataset {
-  // `aoi` is an optional closed [lon, lat] ring; features outside it are dropped.
+  // `aoi` is an optional list of polygons [[outer, ...holes], ...] of [lon, lat]
+  // rings; features outside it are dropped.
   constructor(parsed, bbox, aoi = null) {
     const [w, s, e, n] = bbox;
     this.bbox = bbox;
     this.parsed = parsed;
     this.proj = makeProjection((w + e) / 2, (s + n) / 2);
-    this.aoi = aoi ? aoi.map(([lon, lat]) => this.proj.toXY(lon, lat)) : null;
+    this.aoi = aoi
+      ? aoi.map((poly) => {
+          const rings = poly.map((ring) => ring.map(([lon, lat]) => this.proj.toXY(lon, lat)));
+          return { rings, bbox: ringBBox(rings[0]) };
+        })
+      : null;
     this.points = [];
     this.lines = [];
     this.pointIndex = new GridIndex(50);
@@ -42,7 +48,9 @@ export class Dataset {
   }
 
   _inAOI(x, y) {
-    return !this.aoi || pointInRing(x, y, this.aoi);
+    if (!this.aoi) return true;
+    return this.aoi.some(({ rings, bbox: [w, s, e, n] }) =>
+      x >= w && x <= e && y >= s && y <= n && pointInRing(x, y, rings[0]) && !rings.slice(1).some((h) => pointInRing(x, y, h)));
   }
 
   _addPoint(f) {
