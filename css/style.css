@@ -5,6 +5,7 @@
   --muted: #66707a;
   --line: #dde2e7;
   --accent: #0b6bcb;
+  --brand-green: #2a8a3c;
   --accent-fg: #ffffff;
   --danger: #d03b3b;
   --panel-w: 400px;
@@ -26,6 +27,7 @@
     --muted: #98a2ad;
     --line: #2e363e;
     --accent: #4c9eff;
+    --brand-green: #40b856;
     --accent-fg: #0b1622;
     --danger: #ff6b6b;
     --viz-surface: #1a1a19;
@@ -55,8 +57,12 @@ body { background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.
 .brand h1 { margin: 0 0 4px; font-size: 18px; letter-spacing: -0.01em; }
 .brand p { margin: 0; color: var(--muted); }
 .brand .byline { margin-top: 6px; font-size: 12px; }
-.brand .brand-logo { margin: 0 0 10px; background: #fff; border-radius: 10px; padding: 8px 12px; line-height: 0; }
-.brand-logo img { width: 100%; height: auto; display: block; }
+.brand-lockup { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.brand-lockup img { flex: none; width: 52px; height: 52px; border-radius: 10px; background: #fff; }
+.brand .brand-lockup h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+.brand .brand-lockup .tagline { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.3; }
+.w-open { color: var(--fg); }
+.w-hvra { color: var(--brand-green); }
 .help-logo { display: block; width: min(300px, 70%); height: auto; margin: 0 auto 12px; border-radius: 8px; }
 
 section { padding: 12px 18px; border-bottom: 1px solid var(--line); }
