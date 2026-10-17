@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OSM Proximity Explorer</title>
+  <meta name="description" content="Explore OpenStreetMap buildings, people, facilities, roads and waterways around any point, and estimate flood risk and risk-finance needs. Free, open-data tool for disaster risk practitioners.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+</head>
+<body>
+  <aside id="panel">
+    <header class="brand">
+      <h1>OSM Proximity Explorer</h1>
+      <p>How many people, buildings and facilities are near rivers, streams and roads, and what could a flood cost? Built on open data.</p>
+    </header>
+
+    <section>
+      <form id="search" class="row">
+        <input id="search-q" type="search" placeholder="Search a place (e.g. Sylhet, Bangladesh)" autocomplete="off">
+        <button type="submit" class="btn">Go</button>
+      </form>
+    </section>
+
+    <details open>
+      <summary><span class="step">1</span> Area &amp; data</summary>
+      <div class="body">
+        <div class="seg" role="group" aria-label="Select area">
+          <button type="button" class="btn" data-draw="rect">Rectangle</button>
+          <button type="button" class="btn" data-draw="circle">Circle</button>
+          <button type="button" class="btn" data-draw="polygon">Polygon</button>
+          <button type="button" class="btn" data-draw="view">Current view</button>
+        </div>
+        <p id="aoi-info" class="small"></p>
+
+        <div class="sub">What to download</div>
+        <div class="toggles">
+          <label><input type="checkbox" id="dl-buildings" checked> Buildings</label>
+          <label><input type="checkbox" id="dl-facilities" checked> Facilities</label>
+          <label><input type="checkbox" id="dl-waterways" checked> Waterways</label>
+          <label><input type="checkbox" id="dl-roads" checked> Roads</label>
+          <label><input type="checkbox" id="dl-paths"> Footpaths</label>
+        </div>
+        <div class="radio-row" role="radiogroup" aria-label="Building detail">
+          <label><input type="radio" name="bdetail" value="light" checked> <b>Light</b> <span class="muted">(about 3× smaller; areas estimated)</span></label>
+          <label><input type="radio" name="bdetail" value="footprints"> <b>Footprints</b> <span class="muted">(exact shapes and areas)</span></label>
+        </div>
+        <button id="load" class="btn primary block">Load OSM data</button>
+        <div id="progress" class="progress hidden"><div></div></div>
+        <p id="status" class="muted small">Pick an area, then load. Loaded areas are cached in your browser for 3 days.</p>
+        <p class="small"><a href="#" id="clear-cache">Clear download cache</a></p>
+      </div>
+    </details>
+
+    <details open>
+      <summary><span class="step">2</span> Population model</summary>
+      <div class="body">
+        <p class="muted small">Estimates residents per building from residential floor area (footprint × storeys ÷ floor area per person). Enter a census total to calibrate.</p>
+        <div class="grid2 even">
+          <label class="field"><span>Floor area per person (m²)</span><input id="pop-m2" type="number" min="2" max="200" step="1" value="20"></label>
+          <label class="field"><span>Storeys if unknown</span><input id="pop-levels" type="number" min="1" max="50" step="1" value="1"></label>
+          <label class="field"><span>Known population (optional)</span><input id="pop-known" type="number" min="0" step="1" placeholder="e.g. 45000"></label>
+          <label class="field check"><input id="pop-unknown" type="checkbox" checked><span>Count untagged buildings as homes</span></label>
+        </div>
+        <div id="area-summary" class="stats"></div>
+      </div>
+    </details>
+
+    <details open>
+      <summary><span class="step">3</span> Cursor probe</summary>
+      <div class="body">
+        <label class="field">
+          <span>Radius <output id="radius-out">100 m</output></span>
+          <input id="radius" type="range" min="25" max="1000" step="25" value="100">
+        </label>
+        <p class="muted small" id="pin-hint">Move the mouse to probe. Click the map to pin or unpin the probe.</p>
+        <div id="probe-stats" class="stats"><p class="muted">No data loaded yet.</p></div>
+      </div>
+    </details>
+
+    <details>
+      <summary><span class="step">4</span> Exposure by distance</summary>
+      <div class="body">
+        <div class="grid2">
+          <label class="field"><span>Hazard source</span><select id="source"></select></label>
+          <label class="field"><span>Within (m)</span><input id="dist" type="number" min="5" max="2000" step="5" value="100"></label>
+        </div>
+        <button id="run" class="btn primary block" disabled>Run exposure analysis</button>
+        <div id="exposure-results" class="stats"></div>
+        <div id="downloads" class="row hidden">
+          <button id="dl-geojson" class="btn">GeoJSON (points)</button>
+          <button id="dl-csv" class="btn">CSV</button>
+          <button id="clear" class="btn ghost">Clear</button>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary><span class="step">5</span> Flood risk &amp; risk finance</summary>
+      <div class="body">
+        <p class="muted small">Estimates flood depth at each building from its height above the nearest waterway (open elevation data), then damage, average annual loss and a risk-financing strategy. <b>The default values are placeholders</b>: replace them with local hydrology and construction costs.</p>
+        <div class="grid2">
+          <label class="field"><span>Flooding from</span>
+            <select id="risk-source">
+              <option value="water_river">Rivers &amp; canals</option>
+              <option value="water_all">All waterways</option>
+            </select>
+          </label>
+          <label class="field"><span>Max distance (m)</span><input id="risk-maxdist" type="number" min="50" max="4000" step="50" value="1000"></label>
+        </div>
+
+        <div class="sub">Flood scenarios <span class="muted">(water level above the channel)</span></div>
+        <table class="inputs" id="scenario-table">
+          <thead><tr><th>Return period (yr)</th><th>Water level (m)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <div class="sub">Replacement cost per m² floor area</div>
+        <div class="grid3" id="cost-inputs"></div>
+        <div class="grid2 even">
+          <label class="field"><span>Contents (% of structure)</span><input id="contents" type="number" min="0" max="200" step="5" value="30"></label>
+          <label class="field"><span>Currency</span><input id="currency" type="text" value="USD" maxlength="5"></label>
+        </div>
+        <button id="run-risk" class="btn primary block" disabled>Run flood risk analysis</button>
+        <p id="risk-status" class="muted small"></p>
+        <div id="risk-results" class="stats"></div>
+
+        <div id="finance" class="hidden">
+          <div class="sub">Risk finance layers</div>
+          <p class="muted small">Split the loss curve into layers by return period: retain frequent losses, borrow for medium ones and transfer rare, severe ones.</p>
+          <div class="grid3">
+            <label class="field"><span>Retain up to (yr)</span><input id="f-ret" type="number" min="2" step="1" value="10"></label>
+            <label class="field"><span>Credit up to (yr)</span><input id="f-cred" type="number" min="2" step="1" value="25"></label>
+            <label class="field"><span>Insure up to (yr)</span><input id="f-ins" type="number" min="2" step="1" value="100"></label>
+            <label class="field"><span>Premium multiple</span><input id="f-mult" type="number" min="1" max="10" step="0.1" value="2"></label>
+            <label class="field"><span>Credit fee (%)</span><input id="f-fee" type="number" min="0" max="10" step="0.1" value="0.5"></label>
+          </div>
+          <div id="finance-results"></div>
+          <div class="row" style="margin-top:8px">
+            <button id="dl-risk-csv" class="btn">Building risk CSV</button>
+            <button id="dl-risk-geojson" class="btn">GeoJSON (points)</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Layers &amp; legend</summary>
+      <div class="body">
+        <div class="toggles">
+          <label><input type="checkbox" data-layers="buildings-fill,buildings-line,buildings-pt" checked> Buildings</label>
+          <label><input type="checkbox" data-layers="roads" checked> Roads</label>
+          <label><input type="checkbox" data-layers="waterways" checked> Waterways</label>
+          <label><input type="checkbox" data-layers="facilities" checked> Facilities</label>
+          <label><input type="checkbox" data-layers="buffer,exposed-fill,exposed-pt" checked> Exposure</label>
+          <label><input type="checkbox" data-layers="risk-fill,risk-pt" checked> Flood depth</label>
+        </div>
+        <ul id="legend" class="legend"></ul>
+      </div>
+    </details>
+
+    <footer class="muted small">
+      Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL), via the Overpass API. Elevation: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (SRTM and others).
+      All figures are screening estimates from mapped data and may be incomplete. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Help improve the map</a>.
+    </footer>
+  </aside>
+
+  <main id="map"></main>
+  <button id="panel-toggle" class="btn" aria-controls="panel">Panel</button>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
