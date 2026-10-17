@@ -1,5 +1,9 @@
 # OSM Proximity Explorer
 
+**Live app: https://gomalhunzai.github.io/osm-proximity-explorer/**
+
+Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
+
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
 
 ## What it does

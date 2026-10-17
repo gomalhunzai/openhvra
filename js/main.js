@@ -52,8 +52,8 @@ for (const [id, b] of Object.entries(BASEMAPS)) {
 const map = new maplibregl.Map({
   container: 'map',
   style,
-  center: [85.3076, 27.6945], // Bagmati river, Kathmandu
-  zoom: 15.5,
+  center: [20, 15], // global view
+  zoom: 1.5,
   hash: true,
   attributionControl: { compact: false },
 });
@@ -184,11 +184,14 @@ function updateAoiInfo() {
     const area = lonLatArea(state.aoi.ring) / 1e6;
     text = `<b>${names[state.aoi.type]}</b>: ${area.toFixed(2)} km²`;
     if (state.aoi.radius) text += ` (radius ${m(state.aoi.radius)})`;
+  } else if (box > limit * 20) {
+    // Far too large to be a plausible area (e.g. the initial world view): guide rather than warn.
+    text = `Search for a place or zoom in to your area of interest, then draw an area or use the view (up to ${limit} km²).`;
   } else {
     text = `<b>Current map view</b>: ${box.toFixed(1)} km²`;
   }
   const tooBig = box > limit;
-  if (tooBig) text += ` <span class="warn">Too large: max ${limit} km² in ${buildingDetail()} mode. Zoom in or draw a smaller area.</span>`;
+  if (tooBig && (state.aoi || box <= limit * 20)) text += ` <span class="warn">Too large: max ${limit} km² in ${buildingDetail()} mode. Zoom in or draw a smaller area.</span>`;
   $('aoi-info').innerHTML = text;
   $('load').disabled = tooBig;
   document.querySelectorAll('[data-draw]').forEach((b) => b.classList.toggle('active', b.dataset.draw === (state.aoi?.type ?? 'view')));
