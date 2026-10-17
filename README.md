@@ -137,4 +137,6 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 - **Risk-finance costs** (premium multiples, credit fees) are indicative. Real pricing depends on markets and on basis risk.
 - Please respect the usage policies of [Overpass](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html), [OSM tiles](https://operations.osmfoundation.org/policies/tiles/), [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) and [OpenTopoMap](https://opentopomap.org/about). For heavy use, self-host or use commercial providers.
 
+**Privacy:** visits are counted anonymously with [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data). Files you upload are processed in your browser and are not sent anywhere.
+
 Data © OpenStreetMap contributors (ODbL). Elevation: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
