@@ -5,7 +5,7 @@ import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, D
 import { DrawTool } from './draw.js';
 import { DrawControl, BasemapControl } from './controls.js';
 import { lossCurve } from './chart.js';
-import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel, ACCEPT } from './upload.js';
+import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel as fileFeatureName, ACCEPT } from './upload.js';
 import { SVI_INDICATORS, SVI_CLASSES, GROUPS, DEFAULT_SHARES, sviClass, fetchCountryShares, groupCounts, prepareCensus, computeSVI, classifySVI, sviSummary } from './social.js';
 
 const MAX_AREA_KM2 = { light: 60, footprints: 25 };
@@ -236,7 +236,7 @@ async function handleUpload(files) {
     const sel = $('upload-feature');
     if (polys.length > 1) {
       sel.innerHTML = `<option value="all">All ${polys.length} areas in the file</option>` +
-        polys.slice(0, 1000).map((f, i) => `<option value="${i}">${escapeHtml(featureLabel(f, i))}</option>`).join('');
+        polys.slice(0, 1000).map((f, i) => `<option value="${i}">${escapeHtml(fileFeatureName(f, i))}</option>`).join('');
       sel.classList.remove('hidden');
     } else {
       sel.classList.add('hidden');
@@ -254,7 +254,7 @@ async function handleUpload(files) {
 function selectUploaded(value) {
   const feats = value === 'all' ? upload.features : [upload.features[+value]];
   const { polygons, usedBBox } = toAoiPolygons(feats);
-  const name = value === 'all' ? (feats.length === 1 ? featureLabel(feats[0], 0) : `${feats.length} areas`) : featureLabel(feats[0], +value);
+  const name = value === 'all' ? (feats.length === 1 ? fileFeatureName(feats[0], 0) : `${feats.length} areas`) : fileFeatureName(feats[0], +value);
   setAoi({ type: 'upload', polygons, name, usedBBox });
   const [w, s, e, n] = currentBBox();
   map.fitBounds([[w, s], [e, n]], { padding: 40, duration: 800, maxZoom: 17 });
