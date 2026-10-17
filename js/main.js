@@ -3,11 +3,12 @@ import { Dataset, SOURCES, DEFAULT_POP } from './analysis.js';
 import { circlePolygon, ringBBox, lonLatArea, bboxAreaKm2 } from './spatial.js';
 import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, DEFAULT_COSTS, DEFAULT_FINANCE } from './risk.js';
 import { DrawTool } from './draw.js';
-import { DrawControl, BasemapControl } from './controls.js';
+import { DrawControl, LayerControl } from './controls.js';
 import { lossCurve } from './chart.js';
+import { buildPackage, buildingsCSV, facilitiesCSV, matrixCSV } from './report.js';
 import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel as fileFeatureName, ACCEPT } from './upload.js';
 import { SVI_INDICATORS, SVI_CLASSES, GROUPS, DEFAULT_SHARES, sviClass, fetchCountryShares, groupCounts, prepareCensus, computeSVI, classifySVI, sviSummary } from './social.js';
-import { HAZARDS, HIGH, NOISE_FLOOR, SCORE_CLASSES, scoreClass, loadHazardContext, lakesFromFeatures, scoreHazards, combine, riskMatrix } from './hazards.js';
+import { HAZARDS, HIGH, NOISE_FLOOR, LIKELIHOOD, IMPACT, IMPACT_STEPS, rating, SCORE_CLASSES, scoreClass, loadHazardContext, lakesFromFeatures, scoreHazards, combine, riskMatrix } from './hazards.js';
 
 const MAX_AREA_KM2 = { light: 60, footprints: 25 };
 const EMPTY = { type: 'FeatureCollection', features: [] };
@@ -76,9 +77,30 @@ const draw = new DrawTool(map, {
 const drawCtrl = new DrawControl({ onDraw: startDraw, onClear: () => setAoi(null), onUpload: () => $('upload-file').click() });
 map.addControl(drawCtrl, 'top-left');
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
-map.addControl(new BasemapControl(BASEMAPS, 'osm', (id) => {
-  for (const k of Object.keys(BASEMAPS)) map.setLayoutProperty(`base-${k}`, 'visibility', k === id ? 'visible' : 'none');
-}), 'top-right');
+const ramp = (classes) => classes.map((c) => ({ label: c.label, color: c.color }));
+const layerCtrl = new LayerControl({
+  basemaps: BASEMAPS,
+  basemap: 'osm',
+  layers: [
+    { key: 'area', label: 'Selected area', ids: ['aoi-fill', 'aoi-line', 'bbox'], symbol: { kind: 'line', color: '#7048e8' } },
+    { key: 'buildings', label: 'Buildings', ids: ['buildings-fill', 'buildings-line', 'buildings-pt'], symbol: { kind: 'fill', color: '#5c6b7a' } },
+    { key: 'roads', label: 'Roads', ids: ['roads'], symbol: { kind: 'line', color: '#f59f00' },
+      items: [{ label: 'Major road', color: '#f59f00' }, { label: 'Other road', color: '#868e96' }, { label: 'Footpath', color: '#adb5bd' }] },
+    { key: 'waterways', label: 'Waterways', ids: ['waterways'], symbol: { kind: 'line', color: '#1c7ed6' } },
+    { key: 'facilities', label: 'Facilities', ids: ['facilities'], symbol: { kind: 'dot', color: '#e34948' },
+      items: Object.values(FACILITY_GROUPS).map((g) => ({ label: g.label, color: g.color })) },
+    { key: 'probe', label: 'Cursor probe', ids: ['probe-fill', 'probe-line', 'probe-hits', 'probe-links'], symbol: { kind: 'dot', color: '#ffd43b' } },
+    { key: 'exposure', label: 'Exposure (step 4)', ids: ['buffer', 'exposed-fill', 'exposed-pt'], symbol: { kind: 'fill', color: '#e03131' }, available: false,
+      hint: 'Run step 4 to show', items: [{ label: 'Flood-exposed', color: '#e03131' }, { label: 'Steep riverbank (erosion)', color: '#f08c00' }, { label: 'Distance buffer', color: '#fcc2c2' }] },
+    { key: 'depth', label: 'Flood depth (step 5)', ids: ['risk-fill', 'risk-pt'], symbol: { kind: 'fill', color: '#2a78d6' }, available: false, exclusive: 'colour',
+      hint: 'Run step 5 to show', ramp: ramp(DEPTH_CLASSES) },
+    { key: 'svi', label: 'Social vulnerability (step 6)', ids: ['svi-fill', 'svi-pt'], symbol: { kind: 'fill', color: '#b8481b' }, available: false, exclusive: 'colour',
+      hint: 'Run step 6 to show', ramp: ramp(SVI_CLASSES) },
+    { key: 'mh', label: 'Multi-hazard / risk (step 7)', ids: ['mh-fill', 'mh-pt'], symbol: { kind: 'fill', color: '#ad2b2b' }, available: false, exclusive: 'colour',
+      hint: 'Run step 7 to show', ramp: ramp(SCORE_CLASSES) },
+  ],
+});
+map.addControl(layerCtrl, 'bottom-left');
 map.addControl(new maplibregl.GeolocateControl({ fitBoundsOptions: { maxZoom: 15 } }), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
 
@@ -325,6 +347,8 @@ async function loadData() {
     const ds = new Dataset(parsed, bbox, state.aoi?.polygons);
     state.dataset = ds;
     state.byFid = new Map(ds.points.map((p) => [p.fid, p]));
+    state.loadOpts = opts;
+    state.loadedAoi = state.aoi;
     state.dem = null;
     map.getSource('buildings').setData({ type: 'FeatureCollection', features: ds.buildings.map((p) => p.feature) });
     map.getSource('facilities').setData({ type: 'FeatureCollection', features: ds.facilities.map((p) => p.feature) });
@@ -342,6 +366,7 @@ async function loadData() {
     $('run').disabled = false;
     $('run-risk').disabled = false;
     applyPopulation();
+    updateReportChecklist();
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
     setStatus(`Loaded ${fmt(ds.buildings.length)} buildings, ${fmt(ds.facilities.length)} facilities, ${fmt(parsed.roads.length)} road and ${fmt(parsed.waterways.length)} waterway lines in ${secs}s.` +
       (opts.buildings === 'light' ? ' Building areas are estimated from bounding boxes.' : ''));
@@ -560,6 +585,7 @@ async function runExposure() {
   const lat = (ds.bbox[1] + ds.bbox[3]) / 2;
   map.setPaintProperty('buffer', 'line-width', metresToPixels(dist * 2, lat));
   map.getSource('buffer').setData({ type: 'FeatureCollection', features: res.sourceLines.map((l) => l.feature) });
+  layerCtrl.setAvailable('exposure', true, true);
   // Flood-exposed in red; steep-bank (erosion) in orange; high-and-stable not drawn.
   map.getSource('exposed').setData({
     type: 'FeatureCollection',
@@ -604,10 +630,12 @@ async function runExposure() {
   }
   $('exposure-results').innerHTML = html;
   $('downloads').classList.toggle('hidden', !res.hits.length);
+  updateReportChecklist();
 }
 
 function clearExposure() {
   state.exposure = null;
+  layerCtrl.setAvailable('exposure', false);
   map.getSource('buffer')?.setData(EMPTY);
   map.getSource('exposed')?.setData(EMPTY);
   $('exposure-results').innerHTML = '';
@@ -673,6 +701,7 @@ async function runRisk() {
     await ensureDEM($('risk-status'));
     state.riskScenario = null;
     computeRisk(P);
+    layerCtrl.setAvailable('depth', true, true);
   } catch (err) {
     $('risk-status').innerHTML = `<span class="warn">Flood analysis failed: ${escapeHtml(err.message)}</span>`;
   } finally {
@@ -695,6 +724,7 @@ function computeRisk(P = state.risk?.params ?? riskParams()) {
   renderRisk();
   renderFinance();
   $('finance').classList.remove('hidden');
+  updateReportChecklist();
 }
 
 function renderRisk() {
@@ -754,6 +784,7 @@ function showRiskLayer() {
 
 function clearRisk() {
   state.risk = null;
+  layerCtrl.setAvailable('depth', false);
   map.getSource('risk')?.setData(EMPTY);
   $('risk-results').innerHTML = '';
   $('risk-status').textContent = '';
@@ -889,12 +920,10 @@ function runSVI() {
   computeSVI(ds, use, cen);
   state.sviDone = { use, census: cen, ms: Math.round(performance.now() - t0) };
   classifyAndShowSVI();
-  $('svi-toggle').checked = true;
-  for (const id of ['svi-fill', 'svi-pt']) map.setLayoutProperty(id, 'visibility', 'visible');
-  for (const id of ['mh-fill', 'mh-pt']) map.setLayoutProperty(id, 'visibility', 'none');
-  $('mh-toggle').checked = false;
+  layerCtrl.setAvailable('svi', true, true);
   renderSVI();
   if (state.mh) combineMH(false);
+  updateReportChecklist();
 }
 
 function classifyAndShowSVI() {
@@ -955,6 +984,7 @@ function renderSVI() {
 
 function clearSVI() {
   state.sviDone = null;
+  layerCtrl.setAvailable('svi', false);
   map.getSource('svi')?.setData(EMPTY);
   $('svi-results').innerHTML = '';
 }
@@ -1017,11 +1047,27 @@ async function runMH() {
   const t0 = performance.now();
   try {
     const dem = await ensureDEM($('mh-status'));
-    const ctxKey = `${ds.bbox.join(',')}|${lakeUploads.length}`;
-    if (state.hzCtx?.key !== ctxKey) {
-      const ctx = await loadHazardContext(ds.bbox, { extraLakes: lakeUploads, onStatus: (t) => ($('mh-status').textContent = t) });
-      state.hzCtx = { key: ctxKey, ctx };
+    // Context data per hazard, downloaded only for the ticked hazards and kept
+    // for this area so ticking another hazard later fetches just that part.
+    const key = ds.bbox.join(',');
+    if (state.hzCtx?.key !== key) {
+      state.hzCtx = { key, ctx: { quakes: null, glaciers: 0, lakes: [], coast: [], errors: {} }, have: {} };
     }
+    const { ctx, have } = state.hzCtx;
+    const need = {
+      quakes: use.has('earthquake') && !have.quakes,
+      glof: use.has('glof') && have.glof !== lakeUploads.length, // refetch when lakes are uploaded
+      coast: use.has('coastal') && !have.coast,
+    };
+    const { parts, errors } = await loadHazardContext(ds.bbox, { need, extraLakes: lakeUploads, onStatus: (t) => ($('mh-status').textContent = t) });
+    Object.assign(ctx, parts);
+    for (const k of ['earthquake', 'glof', 'coastal']) {
+      const asked = { earthquake: need.quakes, glof: need.glof, coastal: need.coast }[k];
+      if (asked) ctx.errors[k] = errors[k];
+    }
+    if (need.quakes && parts.quakes) have.quakes = true;
+    if (need.glof && parts.lakes) have.glof = lakeUploads.length;
+    if (need.coast && parts.coast) have.coast = true;
     if ($('hz-svi').checked && !state.sviDone) {
       $('mh-status').textContent = 'Computing social vulnerability…';
       runSVI();
@@ -1034,8 +1080,8 @@ async function runMH() {
       coastLevel: +$('hz-coast').value || 2,
       snowLine: +$('hz-snow').value || 2500,
     };
-    const notes = scoreHazards(ds, dem, state.hzCtx.ctx, P);
-    state.mh = { use, notes, weights: mhWeights(use), ctx: state.hzCtx.ctx, ms: Math.round(performance.now() - t0), show: 'mhi' };
+    const notes = scoreHazards(ds, dem, ctx, P);
+    state.mh = { use, notes, weights: mhWeights(use), ctx, settings: P, ms: Math.round(performance.now() - t0), show: 'mhi' };
     combineMH();
     $('mh-status').textContent = `Scored ${fmt(ds.points.length)} buildings and facilities for ${use.size} hazards in ${(state.mh.ms / 1000).toFixed(1)}s (elevation zoom ${dem.z}).`;
   } catch (err) {
@@ -1055,10 +1101,12 @@ function combineMH(show = true) {
   const relative = state.sviDone?.mode === 'relative';
   const vuln = $('hz-svi').checked && state.sviDone ? (p) => (relative ? p.sviRank : p.svi) : null;
   mh.keys = combine(state.dataset, mh.weights, mh.notes, vuln);
+  mh.withSvi = !!vuln;
   mh.matrix = riskMatrix(state.dataset, mh.keys);
   renderMH();
   if (show) showMHLayer();
   else updateMHSource();
+  updateReportChecklist();
 }
 
 document.querySelector('#hz-table').addEventListener('change', (e) => {
@@ -1110,21 +1158,30 @@ function renderMH() {
   }
   html += '</table>';
 
-  // Likelihood × impact matrix.
-  const L = ['Rare', 'Unlikely', 'Possible', 'Likely', 'Almost certain'];
-  const I = ['Minimal', 'Minor', 'Moderate', 'Major', 'Severe'];
-  const ratingOf = (l, i) => { const s = l * i; return s <= 4 ? 'Low' : s <= 9 ? 'Medium' : s <= 16 ? 'High' : 'Extreme'; };
-  html += `<div class="sub">Risk matrix</div><table class="matrix" aria-label="Risk matrix: likelihood by impact"><tr><th class="rowh"></th>${I.map((t) => `<th>${t}</th>`).join('')}</tr>`;
+  // Likelihood × impact matrix, then the calculation behind it.
+  html += `<div class="sub">Risk matrix</div><table class="matrix" aria-label="Risk matrix: likelihood by impact"><tr><th class="rowh"></th>${IMPACT.map((t) => `<th>${t}</th>`).join('')}</tr>`;
   for (let l = 5; l >= 1; l--) {
-    html += `<tr><th class="rowh">${L[l - 1]}</th>`;
+    html += `<tr><th class="rowh">${LIKELIHOOD[l - 1]}</th>`;
     for (let i = 1; i <= 5; i++) {
-      const r = ratingOf(l, i);
+      const r = rating(l * i);
       const here = mh.matrix.filter((m) => m.likelihood === l && m.impact === i).map((m) => HAZARDS[m.key].short);
       html += `<td class="r-${r.toLowerCase()}" title="${r}"><b>${r}</b>${here.join('<br>')}</td>`;
     }
     html += '</tr>';
   }
-  html += `</table><p class="note">Likelihood comes from the 90th-percentile hazard score across homes. Impact comes from the share of residents at high hazard, raised one step if a health, education or emergency facility is exposed.</p>`;
+  html += `</table>
+    <div class="sub">How the matrix is calculated</div>
+    <div class="table-scroll"><table class="list calc">
+      <tr><th>Hazard</th><th class="num">Mean score</th><th class="num">90th pct.</th><th class="num">Likelihood</th><th class="num">Residents at high hazard</th><th class="num">Impact (base)</th><th class="num">Health / school / emergency at high hazard (+1)</th><th class="num">Impact</th><th class="num">L × I</th><th class="num">Rating</th></tr>
+      ${mh.matrix.map((m) => `<tr><td>${HAZARDS[m.key].label}</td><td class="num">${m.mean.toFixed(2)}</td><td class="num">${m.p90.toFixed(2)}</td>
+        <td class="num">${m.likelihood} ${LIKELIHOOD[m.likelihood - 1]}</td><td class="num">${fmt(Math.round(m.exposedPop))} (${(100 * m.exposedShare).toFixed(1)}%)</td>
+        <td class="num">${m.impactBase}</td><td class="num">${m.critical ? `yes (${m.criticalCount})` : 'no'}</td><td class="num">${m.impact} ${IMPACT[m.impact - 1]}</td>
+        <td class="num">${m.score}</td><td class="num">${m.rating}</td></tr>`).join('')}
+    </table></div>
+    <p class="note"><b>Likelihood</b> = 1 + ⌊5 × 90th-percentile hazard score across homes⌋ (max 5).
+      <b>Impact (base)</b> = 1 + one step for each threshold reached by the share of residents at high hazard (score ≥ ${HIGH}): ${IMPACT_STEPS.map((t) => `${t * 100}%`).join(', ')}.
+      <b>Impact</b> = base + 1 (max 5) if a health, education or emergency facility is at high hazard.
+      <b>Rating</b> from L × I: 1–4 Low, 5–9 Medium, 10–16 High, 20–25 Extreme.</p>`;
 
   // Residents by class for the index and the combined risk.
   const cls = (f) => SCORE_CLASSES.map((c, i) => popOf((b) => f(b) != null && scoreClass(f(b)) === i));
@@ -1170,15 +1227,7 @@ function updateMHSource() {
 
 function showMHLayer() {
   updateMHSource();
-  // One building colouring at a time: hide flood depth and social vulnerability.
-  for (const [toggle, ids] of [['svi-toggle', ['svi-fill', 'svi-pt']], ['mh-toggle', ['mh-fill', 'mh-pt']]]) {
-    const on = toggle === 'mh-toggle';
-    $(toggle).checked = on;
-    for (const id of ids) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-  }
-  const depth = document.querySelector('[data-layers="risk-fill,risk-pt"]');
-  depth.checked = false;
-  for (const id of ['risk-fill', 'risk-pt']) map.setLayoutProperty(id, 'visibility', 'none');
+  layerCtrl.setAvailable('mh', true, true);
 }
 
 function mhRows() {
@@ -1194,6 +1243,7 @@ function mhRows() {
 
 function clearMH() {
   state.mh = null;
+  layerCtrl.setAvailable('mh', false);
   map.getSource('mh')?.setData(EMPTY);
   $('mh-results').innerHTML = '';
   $('mh-status').textContent = '';
@@ -1279,7 +1329,7 @@ $('dl-csv').addEventListener('click', () => {
 $('dl-risk-csv').addEventListener('click', () => download('osm-flood-risk.csv', csvOf(riskRows()), 'text/csv'));
 $('dl-risk-geojson').addEventListener('click', () => download('osm-flood-risk.geojson', pointsGeoJSON(riskRows()), 'application/geo+json'));
 
-// ---- Search, layers, legend, mobile ----------------------------------------------------------
+// ---- Search, mobile ---------------------------------------------------------------------------
 
 $('search').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1297,27 +1347,76 @@ $('search').addEventListener('submit', async (e) => {
   }
 });
 
-document.querySelectorAll('[data-layers]').forEach((cb) => {
-  cb.addEventListener('change', () => {
-    for (const id of cb.dataset.layers.split(',')) map.setLayoutProperty(id, 'visibility', cb.checked ? 'visible' : 'none');
-  });
-});
-
-$('legend').innerHTML =
-  Object.values(FACILITY_GROUPS).map((d) => `<li><span class="dot" style="background:${d.color}"></span>${d.label}</li>`).join('') +
-  '<li><span class="dot" style="background:#1c7ed6"></span>Waterway</li>' +
-  '<li><span class="dot" style="background:#f59f00"></span>Major road</li>' +
-  '<li><span class="dot" style="background:#e03131"></span>Flood-exposed feature</li>' +
-  '<li><span class="dot" style="background:#f08c00"></span>Steep riverbank (erosion risk)</li>' +
-  '<li><span class="dot" style="background:#ffd43b;outline:1px solid #1d2329"></span>Inside probe</li>' +
-  '<li><span class="dot" style="background:#2a78d6"></span>Flooded building (darker = deeper)</li>' +
-  '<li><span class="dot" style="background:#b8481b"></span>Social vulnerability (darker = higher)</li>' +
-  '<li><span class="dot" style="background:#ad2b2b"></span>Multi-hazard / combined risk (darker = higher)</li>';
-
 $('panel-toggle').addEventListener('click', () => {
   $('panel').classList.toggle('collapsed');
   setTimeout(() => map.resize(), 50);
 });
+
+// ---- Report & downloads (step 8) --------------------------------------------------------------
+
+// Everything the export needs, as currently shown in the app.
+function snapshot() {
+  const ds = state.dataset;
+  const aoi = state.loadedAoi;
+  const names = { rect: 'Rectangle', circle: 'Circle', polygon: 'Polygon', upload: 'Uploaded area' };
+  const [w, s, e, n] = ds.bbox;
+  const finance = state.risk ? financeParams() : null;
+  return {
+    generated: new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
+    ds,
+    aoi,
+    areaLabel: aoi ? `${names[aoi.type]}${aoi.name ? ` (${aoi.name})` : ''}` : 'Map view',
+    areaKm2: aoi ? aoiArea(aoi.polygons) / 1e6 : bboxAreaKm2([w, s, e, n]),
+    loadOpts: state.loadOpts,
+    exposure: state.exposure,
+    risk: state.risk,
+    riskScenario: state.riskScenario ?? 0,
+    finance,
+    layers: state.risk ? financeLayers(state.risk.curve, finance) : null,
+    svi: state.sviDone,
+    shares: shares(),
+    mh: state.mh,
+  };
+}
+
+function updateReportChecklist() {
+  const items = [
+    ['Data & population (steps 1–2)', !!state.dataset],
+    ['Exposure by distance (step 4)', !!state.exposure],
+    ['Flood risk & risk finance (step 5)', !!state.risk],
+    ['Social vulnerability (step 6)', !!state.sviDone],
+    ['Multi-hazard risk & matrix (step 7)', !!state.mh],
+  ];
+  $('report-checklist').innerHTML = items.map(([label, done]) =>
+    `<li class="${done ? 'done' : 'todo'}"><span class="mark">${done ? '✓' : '–'}</span>${label}${done ? '' : ' <span class="small">(not run, left out)</span>'}</li>`).join('');
+  $('dl-package').disabled = $('dl-buildings').disabled = $('dl-facilities').disabled = !state.dataset;
+  $('dl-matrix').disabled = !state.mh;
+}
+
+$('report-step').addEventListener('toggle', updateReportChecklist);
+updateReportChecklist();
+
+const stamp = () => new Date().toISOString().slice(0, 10);
+
+$('dl-package').addEventListener('click', async () => {
+  if (!state.dataset) return;
+  $('dl-package').disabled = true;
+  $('report-status').textContent = 'Building the package…';
+  try {
+    const zip = await buildPackage(snapshot());
+    const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+    Object.assign(document.createElement('a'), { href: url, download: `openhvra-${stamp()}.zip` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    $('report-status').textContent = `Package ready (${(zip.length / 1e6).toFixed(1)} MB). Open README.txt first.`;
+  } catch (err) {
+    $('report-status').innerHTML = `<span class="warn">Could not build the package: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    $('dl-package').disabled = false;
+  }
+});
+$('dl-buildings').addEventListener('click', () => download(`openhvra-buildings-${stamp()}.csv`, buildingsCSV(snapshot()), 'text/csv'));
+$('dl-facilities').addEventListener('click', () => download(`openhvra-facilities-${stamp()}.csv`, facilitiesCSV(snapshot()), 'text/csv'));
+$('dl-matrix').addEventListener('click', () => download(`openhvra-risk-matrix-${stamp()}.csv`, matrixCSV(snapshot()), 'text/csv'));
 
 // ---- Welcome / how-to dialog ------------------------------------------------------------------
 

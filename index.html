@@ -218,28 +218,25 @@
       </div>
     </details>
 
-    <details>
-      <summary>Layers &amp; legend</summary>
-      <div class="body">
-        <div class="toggles">
-          <label><input type="checkbox" data-layers="buildings-fill,buildings-line,buildings-pt" checked> Buildings</label>
-          <label><input type="checkbox" data-layers="roads" checked> Roads</label>
-          <label><input type="checkbox" data-layers="waterways" checked> Waterways</label>
-          <label><input type="checkbox" data-layers="facilities" checked> Facilities</label>
-          <label><input type="checkbox" data-layers="buffer,exposed-fill,exposed-pt" checked> Exposure</label>
-          <label><input type="checkbox" data-layers="risk-fill,risk-pt" checked> Flood depth</label>
-          <label><input type="checkbox" id="svi-toggle" data-layers="svi-fill,svi-pt" checked> Social vulnerability</label>
-          <label><input type="checkbox" id="mh-toggle" data-layers="mh-fill,mh-pt" checked> Multi-hazard</label>
-        </div>
-        <ul id="legend" class="legend"></ul>
-      </div>
-    </details>
-
     <footer class="muted small">
       Created and maintained by <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a> (OpenStreetMap profile).<br>
       Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL), via the Overpass API. Elevation: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (SRTM and others).
       All figures are screening estimates from mapped data and may be incomplete. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Help improve the map</a>.
     </footer>
+    <details id="report-step">
+      <summary><span class="step">8</span> Report &amp; downloads</summary>
+      <div class="body">
+        <p class="muted small">Download everything in one package: a readable summary of the settings and results, every parameter you selected, a table for every building and facility with all its analysis values, summary tables (including the risk-matrix calculation), and the map layers as GeoJSON for QGIS or ArcGIS.</p>
+        <ul id="report-checklist" class="report-list"></ul>
+        <button id="dl-package" class="btn primary block" disabled>Download full package (ZIP)</button>
+        <div class="row" style="margin-top:8px">
+          <button id="dl-buildings" class="btn" disabled>Buildings CSV</button>
+          <button id="dl-facilities" class="btn" disabled>Facilities CSV</button>
+          <button id="dl-matrix" class="btn" disabled>Risk matrix CSV</button>
+        </div>
+        <p id="report-status" class="note"></p>
+      </div>
+    </details>
   </aside>
 
   <dialog id="help" aria-labelledby="help-title">
@@ -267,7 +264,7 @@
         <li><b>Flood risk and risk finance</b> (step 5). Enter the water level for each return period and the local construction costs, then run it to get losses, the loss curve, average annual loss and the financing layers.</li>
         <li><b>Social vulnerability</b> (step 6). Click <i>Use national figures</i> to fill in the vulnerable-group shares, optionally upload a census layer such as poverty by ward, then compute.</li>
         <li><b>Multi-hazard risk</b> (step 7). Choose the hazards and their weights, optionally add a glacial lake inventory, then run it to see the risk matrix, the hotspots and the combined risk map.</li>
-        <li><b>Export.</b> Each step has CSV and GeoJSON downloads you can open in Excel or QGIS. Hover over any building or facility for its details, and use the layers button on the map to change the basemap.</li>
+        <li><b>Report and export</b> (step 8). <i>Download full package</i> gives you a ZIP with a written summary, all your settings, tables for every building and facility with all analysis values, the risk-matrix calculation, and the map layers for QGIS. Each step also has its own quick CSV and GeoJSON downloads. Hover over any building or facility for its details. The <b>Layers</b> box at the bottom-left of the map switches the basemap, turns layers on and off, and shows each layer's legend.</li>
       </ol>
 
       <h3>Good practice</h3>

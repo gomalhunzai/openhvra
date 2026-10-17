@@ -59,8 +59,15 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
 
    The scores combine into a **multi-hazard index** (1 − Π(1 − weight × score)), so one severe hazard stays severe and several moderate ones add up. Together with social vulnerability, this gives a **combined risk** score (√(hazard × vulnerability), as in INFORM).
 
-   Results include a **likelihood × impact risk matrix**, homes and residents facing two or more high hazards, critical facilities exposed, maps for each hazard and for combined risk, and CSV/GeoJSON exports. Hazards that don't apply (no coast, no glaciers, no terrain above the snow line) are reported and left out.
-8. **Exports**: lightweight GeoJSON (points, coordinates rounded to 6 decimals, essential fields only) and CSV, for both the exposure results and the building-level risk results (depth, loss per scenario, AAL per building).
+   Results include a **likelihood × impact risk matrix** with its full calculation shown (90th-percentile score → likelihood; share of residents at high hazard → impact, +1 if a critical facility is exposed; L × I → rating), homes and residents facing two or more high hazards, critical facilities exposed, maps for each hazard and for combined risk, and CSV/GeoJSON exports. Hazards that don't apply (no coast, no glaciers, no terrain above the snow line) are reported and left out.
+8. **Report & downloads**: one click downloads a ZIP package containing:
+   - `README.txt`: a readable summary of every setting and result, step by step, including the risk-matrix working
+   - `parameters.csv`: every selected setting
+   - `buildings.csv` and `facilities.csv`: one row per feature with all its analysis values (population, distance and height above water, flood depth and loss per scenario, average annual loss, social vulnerability and its indicators, every hazard score, the multi-hazard index and combined risk)
+   - `tables/`: population, exposure, flood scenarios, finance layers, vulnerability classes, vulnerable groups, hazard summary, **risk-matrix calculation** and earthquakes
+   - `layers/`: area, buildings, facilities, roads, waterways and glacial lakes as GeoJSON, with the same values
+
+   Buildings, facilities and the risk matrix can also be downloaded as separate CSVs. Each step still has its own quick CSV/GeoJSON exports.
 
 **Facility categories** come from several OSM tag families, not just `amenity`. They include `healthcare`, `emergency`, `office=government`, `shop`, `tourism`, `historic`/`heritage`, `power`, `man_made`, `telecom`, `railway`, `aeroway` and `leisure`, plus road bridges. These are grouped as follows:
 
@@ -76,7 +83,14 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
 
 A **welcome window** explains what the app is and how to run an assessment step by step. It opens on a visitor's first visit, and the **How to use** link in the header reopens it.
 
-**Basemaps** are switched with the layers button on the map: OpenStreetMap, Humanitarian (HOT), Light, Topographic (OpenTopoMap) and Satellite (Esri).
+The **Layers box** at the bottom-left of the map lists everything in one vertical list:
+
+- **Basemap:** OpenStreetMap, Humanitarian (HOT), Light, Topographic (OpenTopoMap) or Satellite (Esri).
+- **Layer switches,** each with its legend symbol beside it. Facility categories and road types expand on demand.
+- **Colour ramps** for flood depth, social vulnerability and multi-hazard, shown while that layer is on. Only one of these three building colourings shows at a time.
+- Layers that need an analysis step to run first are greyed out until they have data.
+
+The box collapses to a single button, and starts collapsed on phones.
 
 ## Run locally
 

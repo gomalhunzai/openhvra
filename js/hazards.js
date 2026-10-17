@@ -78,16 +78,19 @@ async function fetchQuakes(lon, lat, signal) {
 
 const WATER_EXCLUDE = 'river|canal|stream|ditch|drain|wastewater|reflecting_pool|fountain|moat|lock';
 
-function contextQuery(bbox) {
+function glacierQuery(bbox) {
   const g = pad(bbox, 0.3); // ~30 km for glaciers and their lakes
-  const c = pad(bbox, 0.1); // ~10 km for the coastline
-  const b = (x) => `${x[1]},${x[0]},${x[3]},${x[2]}`;
   return `[out:json][timeout:120];
-nwr["natural"="glacier"](${b(g)})->.g;
+nwr["natural"="glacier"](${g[1]},${g[0]},${g[3]},${g[2]})->.g;
 .g out tags bb qt;
 (way["natural"="water"]["water"!~"^(${WATER_EXCLUDE})$"](around.g:3000);relation["natural"="water"]["water"!~"^(${WATER_EXCLUDE})$"](around.g:3000););
-out tags bb qt;
-way["natural"="coastline"](${b(c)});
+out tags bb qt;`;
+}
+
+function coastQuery(bbox) {
+  const c = pad(bbox, 0.1); // ~10 km for the coastline
+  return `[out:json][timeout:120];
+way["natural"="coastline"](${c[1]},${c[0]},${c[3]},${c[2]});
 out tags geom qt;`;
 }
 
@@ -122,42 +125,56 @@ export function lakesFromFeatures(features) {
   return out;
 }
 
-// Download everything the hazard models need besides the elevation model.
-export async function loadHazardContext(bbox, { signal, onStatus, extraLakes = [] } = {}) {
+// Download only what the selected hazards need:
+//   need.quakes → USGS catalogue (earthquake)
+//   need.glof   → glaciers and nearby lakes from OSM, plus lake elevations (GLOF)
+//   need.coast  → coastline from OSM (coastal flood)
+// Returns just those parts, so the caller can keep and merge them.
+export async function loadHazardContext(bbox, { need = {}, signal, onStatus, extraLakes = [] } = {}) {
   const [w, s, e, n] = bbox;
-  const cx = (w + e) / 2;
-  const cy = (s + n) / 2;
-  const ctx = { quakes: null, glaciers: 0, lakes: [], coast: [], errors: {} };
-  onStatus?.('Downloading earthquake catalogue, glaciers, lakes and coastline…');
-  const [q, osm] = await Promise.allSettled([fetchQuakes(cx, cy, signal), runQuery(contextQuery(bbox), { signal })]);
+  const parts = {};
+  const errors = {};
+  const what = [need.quakes && 'earthquake catalogue', need.glof && 'glaciers and lakes', need.coast && 'coastline'].filter(Boolean);
+  if (!what.length) return { parts, errors };
+  onStatus?.(`Downloading ${what.join(', ')}…`);
+  const [q, gl, co] = await Promise.allSettled([
+    need.quakes ? fetchQuakes((w + e) / 2, (s + n) / 2, signal) : null,
+    need.glof ? runQuery(glacierQuery(bbox), { signal }) : null,
+    need.coast ? runQuery(coastQuery(bbox), { signal }) : null,
+  ]);
   if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-  if (q.status === 'fulfilled') ctx.quakes = q.value;
-  else ctx.errors.earthquake = q.reason?.message ?? 'earthquake catalogue unavailable';
-  if (osm.status === 'fulfilled') {
-    for (const el of osm.value) {
-      if (el.tags?.natural === 'glacier') ctx.glaciers++;
-      else if (el.tags?.natural === 'water' && el.bounds) ctx.lakes.push(boundsLake(el));
-      else if (el.tags?.natural === 'coastline' && el.geometry) ctx.coast.push(el.geometry.filter(Boolean).map((p) => [p.lon, p.lat]));
-    }
-  } else {
-    ctx.errors.glof = ctx.errors.coastal = osm.reason?.message ?? 'OpenStreetMap context unavailable';
+  if (need.quakes) {
+    if (q.status === 'fulfilled') parts.quakes = q.value;
+    else errors.earthquake = q.reason?.message ?? 'earthquake catalogue unavailable';
   }
-  ctx.lakes.push(...extraLakes);
-  // Keep the 40 largest lakes and look up their elevation.
-  ctx.lakes = ctx.lakes.sort((a, b) => b.area - a.area).slice(0, 40);
-  if (ctx.lakes.length) {
-    onStatus?.(`Looking up elevation of ${ctx.lakes.length} glacial lake(s)…`);
-    await Promise.all(ctx.lakes.map(async (l) => {
-      try {
-        const dem = await loadDEM([l.lon - 0.002, l.lat - 0.002, l.lon + 0.002, l.lat + 0.002], { signal });
-        l.elev = dem.elev(l.lon, l.lat);
-      } catch {
-        l.elev = NaN;
+  if (need.coast) {
+    if (co.status === 'fulfilled') parts.coast = co.value.filter((el) => el.geometry).map((el) => el.geometry.filter(Boolean).map((p) => [p.lon, p.lat]));
+    else errors.coastal = co.reason?.message ?? 'coastline unavailable';
+  }
+  if (need.glof) {
+    if (gl.status === 'fulfilled') {
+      parts.glaciers = gl.value.filter((el) => el.tags?.natural === 'glacier').length;
+      let lakes = gl.value.filter((el) => el.tags?.natural === 'water' && el.bounds).map(boundsLake);
+      lakes.push(...extraLakes);
+      // Keep the 40 largest lakes and look up their elevation.
+      lakes = lakes.sort((a, b) => b.area - a.area).slice(0, 40);
+      if (lakes.length) {
+        onStatus?.(`Looking up elevation of ${lakes.length} glacial lake(s)…`);
+        await Promise.all(lakes.map(async (l) => {
+          try {
+            const dem = await loadDEM([l.lon - 0.002, l.lat - 0.002, l.lon + 0.002, l.lat + 0.002], { signal });
+            l.elev = dem.elev(l.lon, l.lat);
+          } catch {
+            l.elev = NaN;
+          }
+        }));
       }
-    }));
-    ctx.lakes = ctx.lakes.filter((l) => Number.isFinite(l.elev));
+      parts.lakes = lakes.filter((l) => Number.isFinite(l.elev));
+    } else {
+      errors.glof = gl.reason?.message ?? 'glacier data unavailable';
+    }
   }
-  return ctx;
+  return { parts, errors };
 }
 
 // ---- Scoring ----------------------------------------------------------------------------------
@@ -193,7 +210,8 @@ export function scoreHazards(ds, dem, ctx, P) {
   // Applicability checks.
   if (has('river') && !ds.lines.some(river)) notes.river = 'No rivers or canals mapped in this area.';
   if (has('earthquake') && !ctx.quakes) notes.earthquake = `Earthquake catalogue unavailable (${ctx.errors.earthquake ?? 'unknown error'}).`;
-  if (has('glof') && !ctx.lakes.length) notes.glof = ctx.glaciers
+  if (has('glof') && ctx.errors.glof) notes.glof = `Glacier data unavailable (${ctx.errors.glof}).`;
+  else if (has('glof') && !ctx.lakes.length) notes.glof = ctx.glaciers
     ? `${ctx.glaciers} glaciers within ~30 km but no glacial lakes are mapped. Upload a lake inventory to assess GLOF.`
     : 'No glaciers within ~30 km: not applicable.';
   let maxElev = -Infinity;
@@ -212,7 +230,7 @@ export function scoreHazards(ds, dem, ctx, P) {
       coastSegs++;
     }
   }
-  if (has('coastal') && !coastSegs) notes.coastal = 'No coastline within ~10 km: not applicable.';
+  if (has('coastal') && !coastSegs) notes.coastal = ctx.errors.coastal ? `Coastline unavailable (${ctx.errors.coastal}).` : 'No coastline within ~10 km: not applicable.';
   const lakes = ctx.lakes.map((l) => ({ ...l, xy: ds.proj.toXY(l.lon, l.lat) }));
   const eqScore = ctx.quakes?.score ?? 0;
 
@@ -346,19 +364,42 @@ export function combine(ds, weights, notes, vuln = null) {
 }
 
 // Likelihood × impact matrix per hazard (both 1–5).
+export const LIKELIHOOD = ['Rare', 'Unlikely', 'Possible', 'Likely', 'Almost certain'];
+export const IMPACT = ['Minimal', 'Minor', 'Moderate', 'Major', 'Severe'];
+// Share of residents at high hazard that starts impact levels 2, 3, 4 and 5.
+export const IMPACT_STEPS = [0.005, 0.02, 0.05, 0.15];
+
+export function rating(score) {
+  return score <= 4 ? 'Low' : score <= 9 ? 'Medium' : score <= 16 ? 'High' : 'Extreme';
+}
+
+// Likelihood × impact per hazard (both 1–5), with every intermediate value
+// so the calculation can be shown and exported:
+//   likelihood = 1 + floor(5 × p90), capped at 5, where p90 is the
+//                90th-percentile hazard score across homes
+//   impact     = 1 + number of IMPACT_STEPS reached by the share of residents
+//                at high hazard (score ≥ HIGH), +1 (max 5) if a health,
+//                education or emergency facility is at high hazard
+//   score      = likelihood × impact → Low ≤ 4 < Medium ≤ 9 < High ≤ 16 < Extreme
 export function riskMatrix(ds, keys) {
   const homes = ds.buildings.filter((b) => b.pop > 0 && b.hz);
-  const pop = homes.reduce((a, b) => a + b.pop, 0) || 1;
+  const popTotal = homes.reduce((a, b) => a + b.pop, 0);
   return keys.map((k) => {
     const vals = homes.map((b) => b.hz[k] ?? 0).sort((a, b) => a - b);
     const p90 = vals.length ? vals[Math.floor(0.9 * (vals.length - 1))] : 0;
+    const mean = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
     const likelihood = 1 + Math.min(4, Math.floor(p90 * 5));
-    const exposed = homes.filter((b) => (b.hz[k] ?? 0) >= HIGH).reduce((a, b) => a + b.pop, 0) / pop;
-    let impact = 1 + [0.005, 0.02, 0.05, 0.15].filter((t) => exposed >= t).length;
-    const critical = ds.facilities.some((f) => (f.hz?.[k] ?? 0) >= HIGH && ['health', 'education', 'emergency'].includes(f.group));
-    if (critical) impact = Math.min(5, impact + 1);
+    const highHomes = homes.filter((b) => (b.hz[k] ?? 0) >= HIGH);
+    const exposedPop = highHomes.reduce((a, b) => a + b.pop, 0);
+    const exposedShare = popTotal ? exposedPop / popTotal : 0;
+    const impactBase = 1 + IMPACT_STEPS.filter((t) => exposedShare >= t).length;
+    const criticalFacilities = ds.facilities.filter((f) => (f.hz?.[k] ?? 0) >= HIGH && ['health', 'education', 'emergency'].includes(f.group));
+    const critical = criticalFacilities.length > 0;
+    const impact = Math.min(5, impactBase + (critical ? 1 : 0));
     const score = likelihood * impact;
-    const rating = score <= 4 ? 'Low' : score <= 9 ? 'Medium' : score <= 16 ? 'High' : 'Extreme';
-    return { key: k, likelihood, impact, rating, exposedShare: exposed, critical };
+    return {
+      key: k, mean, p90, likelihood, highHomes: highHomes.length, exposedPop, exposedShare,
+      impactBase, critical, criticalCount: criticalFacilities.length, impact, score, rating: rating(score),
+    };
   });
 }

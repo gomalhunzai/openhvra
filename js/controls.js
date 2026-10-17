@@ -1,4 +1,4 @@
-// Map controls: area-drawing toolbar and basemap switcher.
+// Map controls: area-drawing toolbar, and the layers box (basemap + overlays + legend).
 
 const ICONS = {
   rect: '<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>',
@@ -45,43 +45,151 @@ export class DrawControl {
   }
 }
 
-export class BasemapControl {
-  constructor(basemaps, current, onSelect) {
+
+// Layers box: basemap choice, overlay switches and each layer's legend in one
+// vertical list on the map. Layers in the same `exclusive` group never show at
+// once (the building colourings: flood depth, social vulnerability, multi-hazard).
+//   layers: [{ key, label, ids: [mapLayerId], symbol: { kind: 'fill'|'line'|'dot', color },
+//              items?: [{ label, color }], ramp?: [{ label, color }], exclusive?, hint?, available? }]
+export class LayerControl {
+  constructor({ basemaps, basemap, layers }) {
     this.basemaps = basemaps;
-    this.current = current;
-    this.onSelect = onSelect;
+    this.basemap = basemap;
+    this.layers = layers.map((l) => ({ available: true, visible: true, ...l }));
+    this.rows = {};
   }
-  onAdd() {
+
+  onAdd(map) {
+    this.map = map;
     const div = document.createElement('div');
-    div.className = 'maplibregl-ctrl maplibregl-ctrl-group basemap-ctrl';
-    const toggle = button('layers', 'Change basemap', () => {
-      menu.hidden = !menu.hidden;
-      toggle.setAttribute('aria-expanded', String(!menu.hidden));
-    });
-    const menu = document.createElement('div');
-    menu.className = 'basemap-menu';
-    menu.hidden = true;
+    div.className = 'maplibregl-ctrl layer-ctrl';
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'layer-head';
+    head.innerHTML = `${ICONS.layers}<span>Layers</span><span class="chev" aria-hidden="true">▾</span>`;
+    const body = document.createElement('div');
+    body.className = 'layer-body';
+    body.id = 'layer-body';
+    head.setAttribute('aria-controls', body.id);
+    head.addEventListener('click', () => this.setOpen(body.hidden));
+
+    let html = '<div class="layer-sec">Basemap</div>';
     for (const [id, b] of Object.entries(this.basemaps)) {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.dataset.id = id;
-      item.innerHTML = `<span class="swatch" style="background:${b.swatch}"></span>${b.label}`;
-      item.classList.toggle('active', id === this.current);
-      item.addEventListener('click', () => {
-        this.current = id;
-        menu.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x.dataset.id === id));
-        menu.hidden = true;
-        this.onSelect(id);
-      });
-      menu.appendChild(item);
+      html += `<label class="layer-row"><input type="radio" name="basemap" value="${id}" ${id === this.basemap ? 'checked' : ''}>
+        <span class="swatch" style="background:${b.swatch}"></span><span>${b.label}</span></label>`;
     }
-    div.append(toggle, menu);
-    document.addEventListener('click', (e) => {
-      if (!div.contains(e.target)) menu.hidden = true;
+    html += '<div class="layer-sec">Layers</div>';
+    for (const l of this.layers) {
+      html += `<div class="layer-item" data-key="${l.key}">
+        <label class="layer-row"><input type="checkbox" data-key="${l.key}" checked>
+          <span class="sym sym-${l.symbol.kind}" style="--c:${l.symbol.color}"></span><span class="name">${l.label}</span>
+          ${l.items ? '<button type="button" class="more" aria-expanded="false" title="Show legend">▸</button>' : ''}</label>
+        <div class="layer-hint">${l.hint ?? ''}</div>
+        ${l.items ? `<ul class="layer-items" hidden>${l.items.map((i) => `<li><span class="sym sym-${l.symbol.kind}" style="--c:${i.color}"></span>${i.label}</li>`).join('')}</ul>` : ''}
+        ${l.ramp ? `<div class="layer-ramp"><div class="ramp">${l.ramp.map((r) => `<span style="background:${r.color}" title="${r.label}"></span>`).join('')}</div>
+          <div class="ramp-labels"><span>${l.ramp[0].label}</span><span>${l.ramp[l.ramp.length - 1].label}</span></div></div>` : ''}
+      </div>`;
+    }
+    body.innerHTML = html;
+
+    body.addEventListener('change', (e) => {
+      const t = e.target;
+      if (t.name === 'basemap') {
+        this.basemap = t.value;
+        for (const k of Object.keys(this.basemaps)) this._vis(`base-${k}`, k === t.value);
+      } else if (t.dataset.key) {
+        this.setVisible(t.dataset.key, t.checked);
+      }
     });
-    return (this.el = div);
+    body.addEventListener('click', (e) => {
+      const more = e.target.closest('.more');
+      if (!more) return;
+      e.preventDefault();
+      const list = more.closest('.layer-item').querySelector('.layer-items');
+      list.hidden = !list.hidden;
+      more.setAttribute('aria-expanded', String(!list.hidden));
+      more.textContent = list.hidden ? '▸' : '▾';
+    });
+
+    div.append(head, body);
+    this.el = div;
+    this.body = body;
+    this.head = head;
+    let open = window.matchMedia('(min-width: 761px)').matches;
+    try {
+      const saved = localStorage.getItem('openhvra-layers-open');
+      if (saved != null) open = saved === '1';
+    } catch {
+      /* default by screen size */
+    }
+    this.setOpen(open, false);
+    for (const l of this.layers) this._render(l);
+    map.on('load', () => this.layers.forEach((l) => this._apply(l)));
+    return div;
   }
+
   onRemove() {
     this.el.remove();
+  }
+
+  setOpen(open, remember = true) {
+    this.body.hidden = !open;
+    this.head.setAttribute('aria-expanded', String(open));
+    this.el.classList.toggle('closed', !open);
+    if (remember) {
+      try {
+        localStorage.setItem('openhvra-layers-open', open ? '1' : '0');
+      } catch {
+        /* not remembered */
+      }
+    }
+  }
+
+  _get(key) {
+    return this.layers.find((l) => l.key === key);
+  }
+
+  _vis(id, on) {
+    if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  }
+
+  _apply(l) {
+    for (const id of l.ids) this._vis(id, l.visible && l.available);
+  }
+
+  _render(l) {
+    const item = this.body.querySelector(`.layer-item[data-key="${l.key}"]`);
+    const box = item.querySelector('input');
+    box.checked = l.visible;
+    box.disabled = !l.available;
+    item.classList.toggle('unavailable', !l.available);
+    item.classList.toggle('on', l.visible && l.available);
+  }
+
+  setVisible(key, on) {
+    const l = this._get(key);
+    l.visible = on;
+    if (on && l.exclusive) {
+      for (const o of this.layers) {
+        if (o !== l && o.exclusive === l.exclusive && o.visible) {
+          o.visible = false;
+          this._apply(o);
+          this._render(o);
+        }
+      }
+    }
+    this._apply(l);
+    this._render(l);
+  }
+
+  // Mark a layer as having data (or not); `show` also switches it on.
+  setAvailable(key, available, show = false) {
+    const l = this._get(key);
+    l.available = available;
+    if (show) this.setVisible(key, true);
+    else {
+      this._apply(l);
+      this._render(l);
+    }
   }
 }
