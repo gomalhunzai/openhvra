@@ -26,12 +26,15 @@
       <div class="brand-lockup">
         <img src="assets/logo-mark.png" width="52" height="52" alt="">
         <div>
-          <h1><span class="w-open">Open</span><span class="w-hvra">HVRA</span></h1>
+          <h1><span class="w-open">Open</span><span class="w-hvra">HVRA</span> <span class="beta-tag">Beta</span></h1>
           <p class="tagline">Hazard, Vulnerability &amp; Risk Assessment from open data</p>
         </div>
       </div>
-      <p>How many people, buildings and facilities are near rivers, streams and roads, and what could a flood cost? Built on open data.</p>
       <p class="byline">By <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a> · <button type="button" id="help-btn" class="linklike" aria-haspopup="dialog">How to use</button></p>
+      <div id="beta-note" class="beta-note" role="note">
+        <p>🚧 <b>Beta version:</b> OpenHVRA is under active development. New features are being added, and the methods used to calculate hazard, vulnerability and risk may change as they are improved and validated. Results may differ between versions, so note the date with any figures you share. <a href="https://github.com/gomalhunzai/openhvra/issues" target="_blank" rel="noopener">Feedback is welcome</a>.</p>
+        <button type="button" id="beta-close" class="beta-close" aria-label="Dismiss notice">✕</button>
+      </div>
     </header>
 
     <section>
@@ -256,6 +259,7 @@
     <div class="help-body">
       <img class="help-logo" src="assets/logo.jpg" width="720" height="455" alt="OpenHVRA: Hazard, Vulnerability &amp; Risk Assessment from Open Data">
       <h2 id="help-title">Welcome to OpenHVRA</h2>
+      <div class="beta-note in-help" role="note"><p>🚧 <b>Beta version:</b> OpenHVRA is under active development. New features are being added, and the methods used to calculate hazard, vulnerability and risk may change as they are improved and validated. Results may differ between versions, so note the date with any figures you share. <a href="https://github.com/gomalhunzai/openhvra/issues" target="_blank" rel="noopener">Feedback is welcome</a>.</p></div>
       <p>OpenHVRA is a free web tool for disaster risk practitioners. It runs a rapid, screening-level <b>hazard, vulnerability and risk assessment</b> for any place on Earth using open data: OpenStreetMap buildings, facilities, roads and rivers, open elevation data, the USGS earthquake catalogue and World Bank demographics. There is nothing to install, and the files you upload stay in your browser.</p>
 
       <h3>What it can tell you</h3>

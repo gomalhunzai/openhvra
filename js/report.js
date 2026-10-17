@@ -181,6 +181,10 @@ function summaryText(S) {
   L.push('OpenHVRA: Hazard, Vulnerability & Risk Assessment from open data');
   L.push('================================================================');
   L.push(`Generated: ${S.generated}`);
+  L.push('');
+  L.push('BETA VERSION: OpenHVRA is under active development. New features are being added, and the methods');
+  L.push('used to calculate hazard, vulnerability and risk may change as they are improved and validated.');
+  L.push('Results may differ between versions, so keep the date above with any figures you share.');
   L.push(`App: https://gomalhunzai.github.io/openhvra/`);
   L.push(`Area: ${S.areaLabel}, ${r2(S.areaKm2)} km² (bbox ${ds.bbox.join(', ')})`);
 
