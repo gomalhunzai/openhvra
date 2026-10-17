@@ -1,6 +1,8 @@
-# OSM Proximity Explorer
+# OpenHVRA
 
-**Live app: https://gomalhunzai.github.io/osm-proximity-explorer/**
+*Hazard, Vulnerability & Risk Assessment from open data*
+
+**Live app: https://gomalhunzai.github.io/openhvra/**
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
