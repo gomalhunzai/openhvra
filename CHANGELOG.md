@@ -8,6 +8,10 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [Unreleased]
+
+- Code released under the MIT License (`LICENSE`); license added to `CITATION.cff`, README and the welcome window.
+
 ## [0.9.0] – 2026-10-18
 
 First numbered release (beta). It includes:

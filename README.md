@@ -164,3 +164,9 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 **Privacy:** visits are counted anonymously with [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data). Files you upload are processed in your browser and are not sent anywhere.
 
 Data © OpenStreetMap contributors (ODbL). Elevation: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
+
+## License
+
+The OpenHVRA code is released under the [MIT License](LICENSE): you may use, copy, modify and share it freely, including in other projects, as long as the copyright and license notice are kept.
+
+Data used and produced by the app keep their own licenses. OpenStreetMap data is © OpenStreetMap contributors under the [ODbL](https://www.openstreetmap.org/copyright), which also applies to outputs derived from it (exported tables, layers and maps): credit OpenStreetMap when you share them.
