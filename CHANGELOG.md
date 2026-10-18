@@ -8,7 +8,9 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
-## [Unreleased]
+## [0.9.1] – 2026-10-18
+
+No method changes: results are identical to 0.9.0.
 
 - Code released under the MIT License (`LICENSE`); license added to `CITATION.cff`, README and the welcome window.
 
@@ -33,4 +35,5 @@ First numbered release (beta). It includes:
 - Publication map layouts (A4 landscape, 300 DPI) and charts (SVG + 300-DPI PNG) for every step, also included in the ZIP.
 - Version number shown in the app and stamped on every export; `CITATION.cff` for citing the software.
 
+[0.9.1]: https://github.com/gomalhunzai/openhvra/releases/tag/v0.9.1
 [0.9.0]: https://github.com/gomalhunzai/openhvra/releases/tag/v0.9.0
