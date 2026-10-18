@@ -8,7 +8,7 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.10.0 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.10.1 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
 
@@ -101,6 +101,8 @@ The **Layers box** at the bottom-left of the map lists everything in one vertica
 - Layers that need an analysis step to run first are greyed out until they have data.
 
 The box collapses to a single button, and starts collapsed on phones.
+
+The **3D** button on the map turns on 3D terrain (with hillshade and a height-exaggeration slider) and raises buildings to their real height (storeys × 3 m), coloured by the active layer. Right-drag or Ctrl+drag to tilt and rotate. Exported maps always stay flat and north-up.
 
 ## Versions and citation
 

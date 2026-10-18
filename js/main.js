@@ -1,9 +1,9 @@
 import { loadOSM, clearCache, FACILITY_GROUPS, CRITICAL_GROUPS, BUILDING_CLASSES } from './osm.js';
 import { Dataset, SOURCES, DEFAULT_POP } from './analysis.js';
-import { circlePolygon, ringBBox, lonLatArea, bboxAreaKm2 } from './spatial.js';
+import { circlePolygon, ringBBox, lonLatArea, bboxAreaKm2, makeProjection } from './spatial.js';
 import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, DEFAULT_COSTS, DEFAULT_FINANCE } from './risk.js';
 import { DrawTool } from './draw.js';
-import { DrawControl, LayerControl } from './controls.js';
+import { DrawControl, LayerControl, ThreeDControl } from './controls.js';
 import { lossCurve } from './chart.js';
 import { VERSION, REPO } from './version.js';
 import { figuresFor } from './figures.js';
@@ -31,6 +31,7 @@ const state = {
   dataset: null,
   marks: { lakes: [], glaciers: [], paths: {} }, // user-marked glacial lakes, glaciers and outflow paths
   drawPurpose: null, // set while drawing a GLOF mark instead of an area
+  is3d: false, // 3D view (terrain + building extrusions) switched on
   aoi: null, // selected area { type, polygons, name?, radius? } or null for the current view
   radius: 100,
   pinned: false,
@@ -60,6 +61,13 @@ for (const [id, b] of Object.entries(BASEMAPS)) {
   style.sources[`base-${id}`] = { type: 'raster', tileSize: 256, tiles: b.tiles, attribution: b.attribution, maxzoom: b.maxzoom };
   style.layers.push({ id: `base-${id}`, type: 'raster', source: `base-${id}`, layout: { visibility: id === 'osm' ? 'visible' : 'none' }, paint: b.paint ?? {} });
 }
+
+// Elevation for the 3D view: terrain and hillshade read the open Terrarium
+// tiles, which are only requested while 3D is switched on.
+const DEM = { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 15, attribution: 'Elevation: AWS Terrain Tiles' };
+style.sources['dem-terrain'] = DEM;
+style.sources['dem-hillshade'] = { ...DEM };
+style.layers.push({ id: 'hillshade', type: 'hillshade', source: 'dem-hillshade', layout: { visibility: 'none' }, paint: { 'hillshade-exaggeration': 0.35, 'hillshade-shadow-color': '#3d4a57' } });
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -92,6 +100,7 @@ map.addControl(drawCtrl, 'top-left');
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 const ramp = (classes) => classes.map((c) => ({ label: c.label, color: c.color }));
 const layerCtrl = new LayerControl({
+  onChange: () => refresh3D(),
   basemaps: BASEMAPS,
   basemap: 'osm',
   layers: [
@@ -117,6 +126,8 @@ const layerCtrl = new LayerControl({
   ],
 });
 map.addControl(layerCtrl, 'bottom-left');
+const threeD = new ThreeDControl({ onToggle: (on, ex) => set3D(on, ex), onExaggeration: (ex) => state.is3d && map.setTerrain({ source: 'dem-terrain', exaggeration: ex }) });
+map.addControl(threeD, 'top-right');
 map.addControl(new maplibregl.GeolocateControl({ fitBoundsOptions: { maxZoom: 15 } }), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
 
@@ -143,7 +154,7 @@ function metresToPixels(metres, lat) {
 }
 
 map.on('load', () => {
-  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'mh', 'risk', 'cryo-glaciers', 'cryo-lakes', 'cryo-paths', 'cryo-marks', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
+  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'mh', 'risk', 'cryo-glaciers', 'cryo-lakes', 'cryo-paths', 'cryo-marks', 'b3d', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
     map.addSource(id, { type: 'geojson', data: EMPTY });
   }
   const isPoint = ['==', ['geometry-type'], 'Point'];
@@ -170,6 +181,9 @@ map.on('load', () => {
   map.addLayer({ id: 'mh-pt', type: 'circle', source: 'mh', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': mhColor } });
   map.addLayer({ id: 'risk-fill', type: 'fill', source: 'risk', filter: ['!', isPoint], paint: { 'fill-color': depthColor, 'fill-opacity': 0.9 } });
   map.addLayer({ id: 'risk-pt', type: 'circle', source: 'risk', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': depthColor } });
+  map.addLayer({ id: 'b3d', type: 'fill-extrusion', source: 'b3d', layout: { visibility: 'none' }, paint: {
+    'fill-extrusion-color': '#9aa4ae', 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.92,
+  } });
   map.addLayer({ id: 'cryo-glacier-fill', type: 'fill', source: 'cryo-glaciers', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#d0ebff', 'fill-opacity': 0.55 } });
   map.addLayer({ id: 'cryo-glacier-line', type: 'line', source: 'cryo-glaciers', paint: { 'line-color': '#74c0fc', 'line-width': 1.2 } });
   map.addLayer({ id: 'cryo-paths-other', type: 'line', source: 'cryo-paths', filter: ['!', ['get', 'reaches']], paint: { 'line-color': '#868e96', 'line-width': 2, 'line-dasharray': [2, 1.5] } });
@@ -393,6 +407,7 @@ async function loadData() {
     $('run-risk').disabled = false;
     applyPopulation();
     updateReportChecklist();
+    refresh3D();
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
     setStatus(`Loaded ${fmt(ds.buildings.length)} buildings, ${fmt(ds.facilities.length)} facilities, ${fmt(parsed.roads.length)} road and ${fmt(parsed.waterways.length)} waterway lines in ${secs}s.` +
       (opts.buildings === 'light' ? ' Building areas are estimated from bounding boxes.' : ''));
@@ -812,6 +827,7 @@ function showRiskLayer() {
     features.push({ ...p.feature, properties: { fid: p.fid, depth: p.depths[i] } });
   }
   map.getSource('risk').setData({ type: 'FeatureCollection', features });
+  refresh3D();
 }
 
 function clearRisk() {
@@ -966,6 +982,7 @@ function classifyAndShowSVI() {
     type: 'FeatureCollection',
     features: ds.buildings.filter((b) => b.pop > 0 && b.svi != null).map((b) => ({ ...b.feature, properties: { fid: b.fid, cls: b.sviClass } })),
   });
+  refresh3D();
 }
 
 $('svi-mode').addEventListener('change', () => {
@@ -1277,6 +1294,7 @@ function mhFeatures(k = state.mh.show) {
 
 function updateMHSource() {
   map.getSource('mh').setData(mhFeatures());
+  refresh3D();
 }
 
 function showMHLayer() {
@@ -1554,6 +1572,107 @@ document.addEventListener('click', (e) => {
 
 $('dl-marks').addEventListener('click', () => download(`openhvra-glacier-lake-marks-${stamp()}.geojson`, JSON.stringify(marksGeoJSON()), 'application/geo+json'));
 
+// ---- 3D view ------------------------------------------------------------------------------------
+
+// Flat building fills fade out in 3D (the extrusions replace them); their
+// opacities are restored when 3D is switched off.
+const FLAT_BUILDING_PAINT = {
+  'buildings-fill': 'fill-opacity', 'buildings-line': 'line-opacity', 'buildings-pt': 'circle-opacity', 'exposed-fill': 'fill-opacity',
+  'risk-fill': 'fill-opacity', 'risk-pt': 'circle-opacity', 'svi-fill': 'fill-opacity', 'svi-pt': 'circle-opacity', 'mh-fill': 'fill-opacity', 'mh-pt': 'circle-opacity',
+};
+const saved2D = {};
+const GREY_3D = '#c4c9cf';
+
+function set3D(on, exaggeration) {
+  state.is3d = on;
+  if (on) {
+    map.setTerrain({ source: 'dem-terrain', exaggeration });
+    map.setLayoutProperty('hillshade', 'visibility', 'visible');
+    // A light sky and horizon haze instead of the empty page behind a tilted map.
+    if (typeof map.setSky === 'function') {
+      map.setSky({ 'sky-color': '#a9cbee', 'horizon-color': '#e6eef7', 'fog-color': '#e6eef7', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85 });
+    }
+    for (const [id, prop] of Object.entries(FLAT_BUILDING_PAINT)) {
+      saved2D[id] = { [prop]: map.getPaintProperty(id, prop) ?? 1 };
+      map.setPaintProperty(id, prop, 0);
+    }
+    refresh3D();
+    // Tilt only once the elevation under the view has loaded, restoring the
+    // view from before 3D: when terrain arrives MapLibre 4 keeps the camera
+    // altitude and changes the zoom, and tilting before that in high mountains
+    // leaves the camera inside the terrain (a blank or broken view).
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const tilt = () => {
+      if (!state.is3d) return;
+      map.jumpTo({ center, zoom });
+      map.easeTo({ pitch: 55, duration: 900 });
+    };
+    let done = false;
+    const once = () => {
+      if (!done) {
+        done = true;
+        tilt();
+      }
+    };
+    map.once('idle', once);
+    setTimeout(once, 20000);
+  } else {
+    map.setTerrain(null);
+    map.setLayoutProperty('hillshade', 'visibility', 'none');
+    map.setLayoutProperty('b3d', 'visibility', 'none');
+    for (const [id, props] of Object.entries(saved2D)) for (const [prop, v] of Object.entries(props)) map.setPaintProperty(id, prop, v);
+    map.easeTo({ pitch: 0, bearing: 0, duration: 700 });
+  }
+}
+
+// Square block for buildings mapped as points (Light mode), sized from the footprint estimate.
+function blockAround(b) {
+  const half = Math.min(30, Math.max(2, Math.sqrt(b.footprint || 60) / 2));
+  const [lon, lat] = b.feature.center;
+  const p = makeProjection(lon, lat);
+  const ring = [[-half, -half], [half, -half], [half, half], [-half, half], [-half, -half]].map(([x, y]) => p.toLonLat(x, y));
+  return { type: 'Polygon', coordinates: [ring] };
+}
+
+// Colour of the extrusions: the thematic layer that is switched on.
+function colour3D(mode) {
+  if (mode === 'none') return '#9aa4ae';
+  if (mode === 'exposure') return ['match', ['coalesce', ['get', 'v'], ''], 'flood', '#e03131', 'bank', '#f08c00', GREY_3D];
+  if (mode === 'svi') {
+    const e = ['match', ['coalesce', ['get', 'v'], -1]];
+    SVI_CLASSES.forEach((c, i) => e.push(i, c.color));
+    return [...e, GREY_3D];
+  }
+  const classes = mode === 'depth' ? DEPTH_CLASSES : SCORE_CLASSES;
+  const step = ['step', ['get', 'v'], classes[0].color];
+  classes.slice(0, -1).forEach((c, i) => step.push(c.max, classes[i + 1].color));
+  return ['case', ['==', ['get', 'v'], null], GREY_3D, step];
+}
+
+// Rebuild the extruded buildings: real height (storeys × 3 m), coloured by the active layer.
+function refresh3D() {
+  if (!state.is3d || !map.getSource('b3d')) return;
+  const ds = state.dataset;
+  const show = !!ds && layerCtrl.isOn('buildings');
+  map.setLayoutProperty('b3d', 'visibility', show ? 'visible' : 'none');
+  if (!show) return;
+  const mode = layerCtrl.isOn('mh') ? 'mh' : layerCtrl.isOn('svi') ? 'svi' : layerCtrl.isOn('depth') ? 'depth' : layerCtrl.isOn('exposure') ? 'exposure' : 'none';
+  const exp = mode === 'exposure' ? new Map(state.exposure.all.map((h) => [h.p, h.ex])) : null;
+  const features = ds.buildings.map((b) => {
+    let v = null;
+    if (mode === 'mh') v = mhValue(b) ?? null;
+    else if (mode === 'svi') v = b.sviClass ?? null;
+    else if (mode === 'depth') v = b.depths?.[state.riskScenario] > 0 ? b.depths[state.riskScenario] : null;
+    else if (mode === 'exposure') v = exp.get(b) ?? null;
+    if (mode === 'mh' && state.mh.show === 'risk' && b.pop <= 0) v = null;
+    const geometry = b.feature.geometry.type === 'Polygon' ? b.feature.geometry : blockAround(b);
+    return { type: 'Feature', geometry, properties: { h: Math.max(3, (b.floors ?? 1) * 3), v } };
+  });
+  map.getSource('b3d').setData({ type: 'FeatureCollection', features });
+  map.setPaintProperty('b3d', 'fill-extrusion-color', colour3D(mode));
+}
+
 // ---- Map and chart exports (per step) -----------------------------------------------------------
 
 const PROBE_LAYERS = ['probe-fill', 'probe-line', 'probe-hits', 'probe-links'];
@@ -1639,6 +1758,8 @@ function mapSpec(step, view) {
 
 async function exportMap(step, view, statusEl) {
   const spec = mapSpec(step, view);
+  spec.hide = [...(spec.hide ?? []), 'b3d', 'hillshade'];
+  if (state.is3d) spec.paint = saved2D;
   if (statusEl) statusEl.textContent = 'Rendering the map at 300 DPI…';
   const blob = await renderMapLayout(map, spec);
   return { name: `${spec.file}.png`, blob };

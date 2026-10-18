@@ -52,8 +52,9 @@ export class DrawControl {
 //   layers: [{ key, label, ids: [mapLayerId], symbol: { kind: 'fill'|'line'|'dot', color },
 //              items?: [{ label, color }], ramp?: [{ label, color }], exclusive?, hint?, available? }]
 export class LayerControl {
-  constructor({ basemaps, basemap, layers }) {
+  constructor({ basemaps, basemap, layers, onChange }) {
     this.basemaps = basemaps;
+    this.onChange = onChange;
     this.basemap = basemap;
     this.layers = layers.map((l) => ({ available: true, visible: true, ...l }));
     this.rows = {};
@@ -180,6 +181,13 @@ export class LayerControl {
     }
     this._apply(l);
     this._render(l);
+    this.onChange?.();
+  }
+
+  // Whether a layer is currently shown (switched on and has data).
+  isOn(key) {
+    const l = this._get(key);
+    return !!(l?.visible && l.available);
   }
 
   // Mark a layer as having data (or not); `show` also switches it on.
@@ -190,6 +198,51 @@ export class LayerControl {
     else {
       this._apply(l);
       this._render(l);
+      this.onChange?.();
     }
+  }
+}
+
+// 3D toggle with a terrain-exaggeration slider shown while 3D is on.
+export class ThreeDControl {
+  constructor({ onToggle, onExaggeration }) {
+    this.onToggle = onToggle;
+    this.onExaggeration = onExaggeration;
+    this.on = false;
+  }
+  onAdd() {
+    const div = document.createElement('div');
+    div.className = 'maplibregl-ctrl maplibregl-ctrl-group threed-ctrl';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'threed-btn';
+    btn.textContent = '3D';
+    btn.title = '3D view: terrain and building heights (right-drag or Ctrl+drag to tilt and rotate)';
+    btn.setAttribute('aria-pressed', 'false');
+    const panel = document.createElement('label');
+    panel.className = 'threed-panel';
+    panel.hidden = true;
+    panel.innerHTML = '<span>Terrain ×<output>1</output></span><input type="range" min="1" max="3" step="0.25" value="1" aria-label="Terrain exaggeration">';
+    const range = panel.querySelector('input');
+    range.addEventListener('input', () => {
+      panel.querySelector('output').textContent = range.value;
+      this.onExaggeration(+range.value);
+    });
+    btn.addEventListener('click', () => this.set(!this.on));
+    div.append(btn, panel);
+    this.btn = btn;
+    this.panel = panel;
+    this.range = range;
+    return (this.el = div);
+  }
+  set(on) {
+    this.on = on;
+    this.btn.classList.toggle('active', on);
+    this.btn.setAttribute('aria-pressed', String(on));
+    this.panel.hidden = !on;
+    this.onToggle(on, +this.range.value);
+  }
+  onRemove() {
+    this.el.remove();
   }
 }

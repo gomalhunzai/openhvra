@@ -61,6 +61,9 @@ export async function renderMapLayout(map, opts) {
     if (opts.show?.includes(l.id)) l.layout = { ...l.layout, visibility: 'visible' };
   }
   for (const [id, data] of Object.entries(opts.data ?? {})) if (style.sources[id]) style.sources[id].data = data;
+  // Publication maps are flat and north-up; restore 2D paint dimmed by the 3D view.
+  delete style.terrain;
+  for (const l of style.layers) if (opts.paint?.[l.id]) l.paint = { ...l.paint, ...opts.paint[l.id] };
 
   // Render at 2× the layout size (sharper basemap tiles, thinner print lines).
   const holder = document.createElement('div');
