@@ -7,6 +7,9 @@ import { SOURCES } from './analysis.js';
 import { expectedAnnual } from './risk.js';
 import { SVI_INDICATORS, SVI_CLASSES, GROUPS, groupCounts, sviSummary } from './social.js';
 import { HAZARDS, HIGH, NOISE_FLOOR, LIKELIHOOD, IMPACT, IMPACT_STEPS, SCORE_CLASSES, scoreClass } from './hazards.js';
+import { VERSION, VERSION_DATE, REPO } from './version.js';
+import { figuresFor } from './figures.js';
+import { svgToPng } from './pubcharts.js';
 
 const FFLATE = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm';
 
@@ -90,6 +93,9 @@ export function featureRow(p, S, exp = exposureIndex(S)) {
 function parameterRows(S) {
   const rows = [];
   const add = (step, parameter, value) => rows.push({ step, parameter, value: Array.isArray(value) ? value.join('; ') : value });
+  add('0 Version', 'openhvra_version', VERSION);
+  add('0 Version', 'version_date', VERSION_DATE);
+  add('0 Version', 'generated', S.generated);
   add('1 Area & data', 'area', S.areaLabel);
   add('1 Area & data', 'area_km2', r2(S.areaKm2));
   add('1 Area & data', 'bbox_w_s_e_n', S.ds.bbox.join(' '));
@@ -178,7 +184,7 @@ function summaryText(S) {
   const h = (t) => L.push('', t, '-'.repeat(t.length));
   const ds = S.ds;
   const fmt = (n) => Math.round(n).toLocaleString('en');
-  L.push('OpenHVRA: Hazard, Vulnerability & Risk Assessment from open data');
+  L.push(`OpenHVRA v${VERSION} (${VERSION_DATE}): Hazard, Vulnerability & Risk Assessment from open data`);
   L.push('================================================================');
   L.push(`Generated: ${S.generated}`);
   L.push('');
@@ -196,6 +202,11 @@ function summaryText(S) {
   L.push('facilities.csv            one row per facility with every analysis value');
   L.push('tables/*.csv              summary tables per step (incl. risk_matrix_calculation.csv)');
   L.push('layers/*.geojson          map layers with the same values (open in QGIS/ArcGIS)');
+  L.push('charts/*.svg, *.png       publication charts per step (SVG vector + PNG 300 DPI)');
+  if (S.mapFiles?.length) L.push('maps/*.png                map layouts per step (A4 landscape, 300 DPI)');
+  L.push('');
+  L.push(`Version history and method changes: ${REPO}/blob/main/CHANGELOG.md`);
+  L.push(`Code for this exact version: ${REPO}/tree/v${VERSION}`);
 
   h('1. Data');
   const s = ds.summary();
@@ -427,5 +438,15 @@ export async function buildPackage(S) {
   if (S.mh?.ctx.lakes?.length) {
     put('layers/glacial_lakes.geojson', fc(S.mh.ctx.lakes.map((l) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r6(l.lon), r6(l.lat)] }, properties: { name: l.name, area_m2: Math.round(l.area), elevation_m: Math.round(l.elev), source: l.source } }))));
   }
+  // Publication charts (SVG + 300-DPI PNG) for every step that ran.
+  for (const st of STEPS) {
+    if (!st.ran(S)) continue;
+    for (const fig of figuresFor(S, st.key)) {
+      put(`charts/${fig.id}.svg`, fig.svg);
+      files[`charts/${fig.id}.png`] = new Uint8Array(await (await svgToPng(fig.svg)).arrayBuffer());
+    }
+  }
+  // Map layouts rendered by the app (see buildMaps in main.js).
+  for (const mf of S.mapFiles ?? []) files[`maps/${mf.name}`] = new Uint8Array(await mf.blob.arrayBuffer());
   return zipSync(files, { level: 6 });
 }

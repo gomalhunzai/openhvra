@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use OpenHVRA or results produced with it, please cite it as below, including the version you used."
+title: "OpenHVRA: Hazard, Vulnerability & Risk Assessment from open data"
+abstract: >-
+  A free, browser-based tool for screening-level hazard, vulnerability and
+  risk assessment from OpenStreetMap and other open data: exposure,
+  population, flood risk and risk finance, social vulnerability and
+  multi-hazard risk.
+type: software
+authors:
+  - family-names: Amin
+    given-names: Gomal
+    website: "https://www.openstreetmap.org/user/Gomal%20Amin"
+version: 0.9.0
+date-released: 2026-10-18
+url: "https://gomalhunzai.github.io/openhvra/"
+repository-code: "https://github.com/gomalhunzai/openhvra"
+keywords:
+  - disaster risk
+  - hazard
+  - vulnerability
+  - OpenStreetMap
+  - flood risk
+  - multi-hazard
+  - exposure

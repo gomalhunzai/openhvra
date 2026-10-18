@@ -293,3 +293,11 @@ table.calc th { white-space: normal; vertical-align: bottom; }
 }
 .beta-note p { margin: 0; }
 .beta-note.in-help { margin: 10px 0 12px; font-size: 13px; }
+
+/* Map and chart exports */
+.exports { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.charts > summary { cursor: pointer; font-size: 13px; color: var(--accent); padding: 4px 0; text-transform: none; letter-spacing: 0; font-weight: 500; display: list-item; }
+.charts > summary::after { content: none; }
+.chart-card { background: #fff; border-radius: 8px; padding: 6px; margin: 8px 0; }
+.chart-card .chart-svg svg { width: 100%; height: auto; display: block; }
+.chart-card .row { padding: 4px 2px 2px; }

@@ -8,6 +8,8 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
+**Current version: 0.9.0 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
 
 ## What it does
@@ -70,6 +72,10 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    - `buildings.csv` and `facilities.csv`: one row per feature with all its analysis values (population, distance and height above water, flood depth and loss per scenario, average annual loss, social vulnerability and its indicators, every hazard score, the multi-hazard index and combined risk)
    - `tables/`: population, exposure, flood scenarios, finance layers, vulnerability classes, vulnerable groups, hazard summary, **risk-matrix calculation** and earthquakes
    - `layers/`: area, buildings, facilities, roads, waterways and glacial lakes as GeoJSON, with the same values
+   - `charts/`: every chart as **SVG** (vector, editable, journal-ready) and **PNG at 300 DPI**
+   - `maps/`: publication **map layouts** (A4 landscape, 300 DPI) for each step, including one per hazard
+
+   Every step also has its own **Map (PNG, 300 DPI)** button and a **Charts** list with SVG/PNG downloads. Map layouts include a title, area and date, legend, key figures, scale bar, north arrow, data credits and the OpenHVRA version.
 
    The checklist in step 8 has a **CSV button for each completed step**, and buildings, facilities and the risk matrix can also be downloaded as separate CSVs. Each step still has its own quick CSV/GeoJSON exports.
 
@@ -95,6 +101,24 @@ The **Layers box** at the bottom-left of the map lists everything in one vertica
 - Layers that need an analysis step to run first are greyed out until they have data.
 
 The box collapses to a single button, and starts collapsed on phones.
+
+## Versions and citation
+
+OpenHVRA uses version numbers so that results can be traced back to the methods that produced them.
+
+- **0.x → 0.(x+1)**: a method changed, so results may differ.
+- **0.x.y → 0.x.(y+1)**: fixes and small additions.
+- **1.0.0**: validated methods, end of beta.
+
+The version appears in the app header and on every exported map, chart, CSV and report.
+
+**To find an old version:**
+
+- The [Releases page](https://github.com/gomalhunzai/openhvra/releases) lists every version with notes and a *Source code (zip)* download.
+- Browse a version's code at `https://github.com/gomalhunzai/openhvra/tree/v0.9.0`, replacing the version number.
+- To run an old version, unzip it and run `node serve.mjs`. The live site always runs the latest version.
+
+**To cite:** use the *Cite this repository* button on the GitHub page (generated from [`CITATION.cff`](CITATION.cff)), and include the version you used.
 
 ## Run locally
 

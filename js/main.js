@@ -5,6 +5,10 @@ import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, D
 import { DrawTool } from './draw.js';
 import { DrawControl, LayerControl } from './controls.js';
 import { lossCurve } from './chart.js';
+import { VERSION, REPO } from './version.js';
+import { figuresFor } from './figures.js';
+import { svgToPng } from './pubcharts.js';
+import { renderMapLayout } from './mapexport.js';
 import { buildPackage, buildingsCSV, facilitiesCSV, matrixCSV, STEPS, stepCSV, stepGeoJSON } from './report.js';
 import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel as fileFeatureName, ACCEPT } from './upload.js';
 import { SVI_INDICATORS, SVI_CLASSES, GROUPS, DEFAULT_SHARES, sviClass, fetchCountryShares, groupCounts, prepareCensus, computeSVI, classifySVI, sviSummary } from './social.js';
@@ -426,7 +430,7 @@ function renderSummary() {
     if (c) html += `<tr><td>${label}</td><td class="num">${fmt(c.count)}</td><td class="num">${fmt(Math.round(c.pop))}</td></tr>`;
   }
   html += `</table><p class="note">Road network ${m(s.len.road)} · waterways ${m(s.len.water)} inside the area.</p>`;
-  $('area-summary').innerHTML = html;
+  $('area-summary').innerHTML = html + exportsBlock('population');
 }
 
 // ---- Cursor probe -------------------------------------------------------------------------
@@ -628,7 +632,7 @@ async function runExposure() {
       }
     }
   }
-  $('exposure-results').innerHTML = html;
+  $('exposure-results').innerHTML = html + (res.sourceLines.length ? exportsBlock('exposure') : '');
   $('downloads').classList.toggle('hidden', !res.hits.length);
   updateReportChecklist();
 }
@@ -762,7 +766,7 @@ function renderRisk() {
     ${row('Buildings on 15–25° slopes', `${fmt(sl.moderate.count)} · ${fmt(Math.round(sl.moderate.pop))} people`)}
     ${row('Buildings on slopes over 25°', `${fmt(sl.steep.count)} · ${fmt(Math.round(sl.steep.pop))} people`)}
   </table><p class="note">Slopes come from ~30 m elevation data, so treat them as indicative only.</p>`;
-  $('risk-results').innerHTML = html;
+  $('risk-results').innerHTML = html + exportsBlock('flood');
   lossCurve($('loss-chart'), R.curve, { fmtMoney: (v) => money(v, cur), fmtCompact: compact });
   $('risk-scenario').addEventListener('change', (e) => {
     state.riskScenario = +e.target.value;
@@ -981,7 +985,7 @@ function renderSVI() {
   html += `<p class="note">Computed for ${fmt(ds.buildings.filter((b) => b.pop > 0).length)} homes in ${state.sviDone.ms} ms. The index reflects mapped OSM facilities; missing clinics or shelters in OSM make an area look more vulnerable than it is.</p>
     <div class="row" style="margin-top:8px"><button id="dl-svi-csv" class="btn">Social vulnerability CSV</button><button id="dl-svi-geojson" class="btn">GeoJSON (points)</button></div>
     <p class="note">One row per home: score, class and rank, each indicator, census value, distances to health and emergency services, estimated children, elderly, people with disabilities and people in poverty${state.risk ? ', and flood depth' : ''}.</p>`;
-  $('svi-results').innerHTML = html;
+  $('svi-results').innerHTML = html + exportsBlock('svi');
   $('dl-svi-csv').addEventListener('click', () => download(`openhvra-social-vulnerability-${stamp()}.csv`, stepCSV(snapshot(), 'svi'), 'text/csv'));
   $('dl-svi-geojson').addEventListener('click', () => download(`openhvra-social-vulnerability-${stamp()}.geojson`, stepGeoJSON(snapshot(), 'svi'), 'application/geo+json'));
 }
@@ -1205,7 +1209,7 @@ function renderMH() {
     <div class="row small muted" style="justify-content:space-between">${SCORE_CLASSES.map((c) => `<span>${c.label}</span>`).join('')}</div>
     <div class="row" style="margin-top:8px"><button id="dl-mh-csv" class="btn">Multi-hazard CSV</button><button id="dl-mh-geojson" class="btn">GeoJSON (points)</button></div>
     <p class="note">Screening estimates from ~30 m elevation, OpenStreetMap and the USGS catalogue. Verify hotspots in the field and with official hazard maps.</p>`;
-  $('mh-results').innerHTML = html;
+  $('mh-results').innerHTML = html + exportsBlock('mh');
   $('mh-show').addEventListener('change', (e) => {
     mh.show = e.target.value;
     showMHLayer();
@@ -1214,19 +1218,23 @@ function renderMH() {
   $('dl-mh-geojson').addEventListener('click', () => download('openhvra-multi-hazard.geojson', pointsGeoJSON(mhRows()), 'application/geo+json'));
 }
 
-function mhValue(p) {
-  const k = state.mh.show;
+function mhValue(p, k = state.mh.show) {
   return k === 'mhi' ? p.mhi : k === 'risk' ? p.risk : p.hz?.[k];
 }
 
-function updateMHSource() {
+// Buildings coloured for one multi-hazard view ('mhi', 'risk' or a hazard key).
+function mhFeatures(k = state.mh.show) {
   const features = [];
   for (const b of state.dataset.buildings) {
-    const v = mhValue(b);
-    if (v == null || (state.mh.show === 'risk' && b.pop <= 0)) continue;
+    const v = mhValue(b, k);
+    if (v == null || (k === 'risk' && b.pop <= 0)) continue;
     features.push({ ...b.feature, properties: { fid: b.fid, v } });
   }
-  map.getSource('mh').setData({ type: 'FeatureCollection', features });
+  return { type: 'FeatureCollection', features };
+}
+
+function updateMHSource() {
+  map.getSource('mh').setData(mhFeatures());
 }
 
 function showMHLayer() {
@@ -1356,6 +1364,141 @@ $('panel-toggle').addEventListener('click', () => {
   setTimeout(() => map.resize(), 50);
 });
 
+// ---- Map and chart exports (per step) -----------------------------------------------------------
+
+const PROBE_LAYERS = ['probe-fill', 'probe-line', 'probe-hits', 'probe-links'];
+const COLOUR_LAYERS = { exposure: ['buffer', 'exposed-fill', 'exposed-pt'], depth: ['risk-fill', 'risk-pt'], svi: ['svi-fill', 'svi-pt'], mh: ['mh-fill', 'mh-pt'] };
+const others = (keep) => Object.entries(COLOUR_LAYERS).filter(([k]) => k !== keep).flatMap(([, ids]) => ids);
+const ORIENT_LEGEND = [
+  { label: 'Waterway', color: '#1c7ed6', kind: 'line' },
+  { label: 'Major road', color: '#f59f00', kind: 'line' },
+  { label: 'Extent of downloaded data', color: '#495057', kind: 'dash' },
+];
+// Facility dots use categorical colours that would clash with the thematic
+// colour scales, so they only appear on the overview map.
+const NO_FACILITIES = ['facilities'];
+const CREDITS = 'Data © OpenStreetMap contributors (ODbL), AWS Terrain Tiles, USGS, World Bank';
+
+// Map layout settings for a step's map. `view` picks the multi-hazard view.
+function mapSpec(step, view) {
+  const S = snapshot();
+  const [w, s, e, n] = state.dataset.bbox;
+  const base = {
+    bounds: [[w, s], [e, n]], credits: CREDITS,
+    subtitle: `${S.areaLabel} · ${S.areaKm2.toFixed(2)} km² · ${S.dateLabel}`,
+    legend: [...(state.loadedAoi ? [{ label: 'Analysed area', color: '#7048e8', kind: 'line' }] : []), ...ORIENT_LEGEND],
+  };
+  const fmtN = (v) => fmt(Math.round(v));
+  if (step === 'population') {
+    const sum = state.dataset.summary();
+    return { ...base, file: 'map-buildings-facilities', title: 'Buildings and facilities', show: ['facilities'], hide: [...PROBE_LAYERS, ...others(null)],
+      legend: [{ label: 'Building', color: '#5c6b7a', kind: 'fill' }, ...base.legend, ...Object.values(FACILITY_GROUPS).map((g) => ({ label: g.label, color: g.color, kind: 'dot' }))], stats: [['estimated residents', fmtN(sum.pop)], ['buildings', fmtN(sum.buildings)], ['facilities', fmtN(sum.facilities)]] };
+  }
+  if (step === 'exposure') {
+    const E = state.exposure;
+    return { ...base, file: 'map-exposure', title: `Exposure within ${E.dist} m of ${SOURCES[E.sourceKey].label.toLowerCase()}`,
+      show: COLOUR_LAYERS.exposure, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('exposure')],
+      legend: [{ label: E.elevation ? `Flood-exposed (≤ ${E.maxHeight} m above water)` : 'Within distance', color: '#e03131', kind: 'fill' },
+        ...(E.elevation ? [{ label: 'Steep bank (erosion risk)', color: '#f08c00', kind: 'fill' }] : []),
+        { label: 'Exposed facility', color: '#e03131', kind: 'ring' }, { label: `${E.dist} m buffer`, color: '#fcc2c2', kind: 'fill' }, ...base.legend],
+      stats: [[`residents ${E.elevation ? 'flood-exposed' : 'within distance'}`, fmtN(E.pop)], ['buildings', fmtN(E.buildings)], ...(E.elevation ? [['residents on steep banks', fmtN(E.bank.pop)]] : [])] };
+  }
+  if (step === 'flood') {
+    const R = state.risk;
+    const sc = R.scenarios[state.riskScenario];
+    return { ...base, file: `map-flood-depth-${sc.rp}yr`, title: `Flood depth: ${sc.rp}-year flood (${sc.level} m above the channel)`,
+      show: COLOUR_LAYERS.depth, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('depth')], legendTitle: 'Flood depth', ramp: DEPTH_CLASSES.map((c) => ({ label: c.label, color: c.color })),
+      stats: [['buildings flooded', fmtN(sc.buildings)], ['people affected', fmtN(sc.pop)], [`loss (${R.params.currency})`, compact(sc.loss)], [`average annual loss (${R.params.currency})`, compact(R.aal)]] };
+  }
+  if (step === 'svi') {
+    const sv = sviSummary(state.dataset);
+    return { ...base, file: 'map-social-vulnerability', title: 'Social vulnerability of homes',
+      show: COLOUR_LAYERS.svi, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('svi')], legendTitle: `Social vulnerability (${state.sviDone.mode})`, ramp: SVI_CLASSES.map((c) => ({ label: c.label, color: c.color })),
+      stats: [['residents in high or very high vulnerability homes', fmtN(sv.classes[3].pop + sv.classes[4].pop)], ['homes scored', fmtN(sv.classes.reduce((a, c) => a + c.buildings, 0))]] };
+  }
+  if (step === 'mh') {
+    const k = view ?? state.mh.show;
+    const label = k === 'mhi' ? 'Multi-hazard index' : k === 'risk' ? 'Combined risk (hazard × social vulnerability)' : `${HAZARDS[k].label} hazard`;
+    const homes = state.dataset.buildings.filter((b) => b.pop > 0 && b.hz);
+    const high = homes.filter((b) => (mhValue(b, k) ?? 0) >= HIGH).reduce((a, b) => a + b.pop, 0);
+    return { ...base, file: `map-${k === 'mhi' ? 'multi-hazard' : k === 'risk' ? 'combined-risk' : `hazard-${k}`}`, title: label,
+      show: COLOUR_LAYERS.mh, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('mh')], data: { mh: mhFeatures(k) }, legendTitle: label, ramp: SCORE_CLASSES.map((c) => ({ label: c.label, color: c.color })),
+      stats: [[`residents at score ≥ ${HIGH}`, fmtN(high)], ['residents assessed', fmtN(homes.reduce((a, b) => a + b.pop, 0))]] };
+  }
+  return null;
+}
+
+async function exportMap(step, view, statusEl) {
+  const spec = mapSpec(step, view);
+  if (statusEl) statusEl.textContent = 'Rendering the map at 300 DPI…';
+  const blob = await renderMapLayout(map, spec);
+  return { name: `${spec.file}.png`, blob };
+}
+
+function saveBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
+  Object.assign(document.createElement('a'), { href: url, download: name }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// Export controls appended to a step's results.
+function exportsBlock(step) {
+  const figs = figuresFor(snapshot(), step);
+  return `<div class="exports" data-step="${step}">
+    <div class="row"><button type="button" class="btn" data-map="${step}">Map (PNG, 300 DPI)</button></div>
+    <p class="note export-status"></p>
+    ${figs.length ? `<details class="charts"><summary>Charts (${figs.length}): preview and download</summary>
+      ${figs.map((f) => `<div class="chart-card"><div class="chart-svg">${f.svg}</div>
+        <div class="row"><button type="button" class="btn mini" data-chart="${step}|${f.id}|svg">SVG</button><button type="button" class="btn mini" data-chart="${step}|${f.id}|png">PNG (300 DPI)</button></div></div>`).join('')}
+    </details>` : ''}
+  </div>`;
+}
+
+document.addEventListener('click', async (e) => {
+  const mapBtn = e.target.closest('[data-map]');
+  const chartBtn = e.target.closest('[data-chart]');
+  if (!mapBtn && !chartBtn) return;
+  const status = e.target.closest('.exports')?.querySelector('.export-status');
+  const btn = mapBtn ?? chartBtn;
+  btn.disabled = true;
+  try {
+    if (mapBtn) {
+      const { name, blob } = await exportMap(mapBtn.dataset.map, null, status);
+      saveBlob(`openhvra-${name.replace('.png', '')}-${stamp()}.png`, blob);
+      if (status) status.textContent = 'Map saved (A4 landscape, 300 DPI).';
+    } else {
+      const [step, id, kind] = chartBtn.dataset.chart.split('|');
+      const fig = figuresFor(snapshot(), step).find((f) => f.id === id);
+      const name = `openhvra-${id}-${stamp()}`;
+      if (kind === 'svg') saveBlob(`${name}.svg`, new Blob([fig.svg], { type: 'image/svg+xml' }));
+      else saveBlob(`${name}.png`, await svgToPng(fig.svg));
+    }
+  } catch (err) {
+    if (status) status.innerHTML = `<span class="warn">Export failed: ${escapeHtml(err.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Every map for the package: one per step that ran, plus each multi-hazard view.
+async function buildMaps(onStatus) {
+  const jobs = [['population']];
+  if (state.exposure) jobs.push(['exposure']);
+  if (state.risk) jobs.push(['flood']);
+  if (state.sviDone) jobs.push(['svi']);
+  if (state.mh) {
+    jobs.push(['mh', 'mhi']);
+    if (state.mh.withSvi) jobs.push(['mh', 'risk']);
+    for (const k of state.mh.keys) jobs.push(['mh', k]);
+  }
+  const out = [];
+  for (const [i, [step, view]] of jobs.entries()) {
+    onStatus?.(`Rendering map ${i + 1} of ${jobs.length} at 300 DPI…`);
+    out.push(await exportMap(step, view));
+  }
+  return out;
+}
+
 // ---- Report & downloads (step 8) --------------------------------------------------------------
 
 // Everything the export needs, as currently shown in the app.
@@ -1367,6 +1510,8 @@ function snapshot() {
   const finance = state.risk ? financeParams() : null;
   return {
     generated: new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC',
+    dateLabel: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+    version: VERSION,
     ds,
     aoi,
     areaLabel: aoi ? `${names[aoi.type]}${aoi.name ? ` (${aoi.name})` : ''}` : 'Map view',
@@ -1411,7 +1556,10 @@ $('dl-package').addEventListener('click', async () => {
   $('dl-package').disabled = true;
   $('report-status').textContent = 'Building the package…';
   try {
-    const zip = await buildPackage(snapshot());
+    const S = snapshot();
+    if ($('pkg-maps').checked) S.mapFiles = await buildMaps((t) => ($('report-status').textContent = t));
+    $('report-status').textContent = 'Building charts and the package…';
+    const zip = await buildPackage(S);
     const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
     Object.assign(document.createElement('a'), { href: url, download: `openhvra-${stamp()}.zip` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -1425,6 +1573,13 @@ $('dl-package').addEventListener('click', async () => {
 $('dl-buildings').addEventListener('click', () => download(`openhvra-buildings-${stamp()}.csv`, buildingsCSV(snapshot()), 'text/csv'));
 $('dl-facilities').addEventListener('click', () => download(`openhvra-facilities-${stamp()}.csv`, facilitiesCSV(snapshot()), 'text/csv'));
 $('dl-matrix').addEventListener('click', () => download(`openhvra-risk-matrix-${stamp()}.csv`, matrixCSV(snapshot()), 'text/csv'));
+
+// ---- Version ----------------------------------------------------------------------------------
+
+for (const a of document.querySelectorAll('.version-link')) {
+  a.textContent = `v${VERSION}`;
+  a.href = `${REPO}/releases`;
+}
 
 // ---- Welcome / how-to dialog ------------------------------------------------------------------
 

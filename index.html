@@ -30,7 +30,7 @@
           <p class="tagline">Hazard, Vulnerability &amp; Risk Assessment from open data</p>
         </div>
       </div>
-      <p class="byline">By <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a> · <button type="button" id="help-btn" class="linklike" aria-haspopup="dialog">How to use</button></p>
+      <p class="byline">By <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a> · <a class="version-link" target="_blank" rel="noopener" title="Version history"></a> · <button type="button" id="help-btn" class="linklike" aria-haspopup="dialog">How to use</button></p>
       <div id="beta-note" class="beta-note" role="note">
         <p>🚧 <b>Beta version:</b> OpenHVRA is under active development. New features are being added, and the methods used to calculate hazard, vulnerability and risk may change as they are improved and validated. Results may differ between versions, so note the date with any figures you share. <a href="https://github.com/gomalhunzai/openhvra/issues" target="_blank" rel="noopener">Feedback is welcome</a>.</p>
       </div>
@@ -237,6 +237,7 @@
       <div class="body">
         <p class="muted small">Download everything in one package: a readable summary of the settings and results, every parameter you selected, a table for every building and facility with all its analysis values, summary tables (including the risk-matrix calculation), and the map layers as GeoJSON for QGIS or ArcGIS.</p>
         <ul id="report-checklist" class="report-list"></ul>
+        <label class="field check" style="padding-top:0"><input type="checkbox" id="pkg-maps" checked><span>Include map layouts (300 DPI; adds about 5–30 seconds per map)</span></label>
         <button id="dl-package" class="btn primary block" disabled>Download full package (ZIP)</button>
         <div class="row" style="margin-top:8px">
           <button id="dl-buildings" class="btn" disabled>Buildings CSV</button>
@@ -280,7 +281,7 @@
         <li><b>Flood risk and risk finance</b> (step 5). Enter the water level for each return period and the local construction costs, then run it to get losses, the loss curve, average annual loss and the financing layers.</li>
         <li><b>Social vulnerability</b> (step 6). Click <i>Use national figures</i> to fill in the vulnerable-group shares, optionally upload a census layer such as poverty by ward, then compute.</li>
         <li><b>Multi-hazard risk</b> (step 7). Choose the hazards and their weights, optionally add a glacial lake inventory, then run it to see the risk matrix, the hotspots and the combined risk map.</li>
-        <li><b>Report and export</b> (step 8). <i>Download full package</i> gives you a ZIP with a written summary, all your settings, a detailed table for each step you ran, tables for every building and facility with all analysis values, the risk-matrix calculation, and the map layers for QGIS. The checklist has a CSV for each completed step, and each step also has its own quick CSV and GeoJSON downloads. Hover over any building or facility for its details. The <b>Layers</b> box at the bottom-left of the map switches the basemap, turns layers on and off, and shows each layer's legend.</li>
+        <li><b>Report and export</b> (step 8). <i>Download full package</i> gives you a ZIP with a written summary, all your settings, a detailed table for each step you ran, publication maps and charts, tables for every building and facility with all analysis values, the risk-matrix calculation, and the map layers for QGIS. The checklist has a CSV for each completed step. Each step also has a <i>Map (PNG, 300 DPI)</i> button and charts you can download as SVG or PNG for reports and papers. Hover over any building or facility for its details. The <b>Layers</b> box at the bottom-left of the map switches the basemap, turns layers on and off, and shows each layer's legend.</li>
       </ol>
 
       <h3>Good practice</h3>
@@ -291,7 +292,7 @@
         <li>These are screening estimates for prioritisation. Verify hotspots in the field and against official hazard maps.</li>
       </ul>
 
-      <p class="help-credit">Data: © OpenStreetMap contributors (ODbL), Overpass API, AWS Terrain Tiles, USGS, World Bank, Nominatim. Created by <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a>. Source code: <a href="https://github.com/gomalhunzai/openhvra" target="_blank" rel="noopener">GitHub</a>.</p>
+      <p class="help-credit">Data: © OpenStreetMap contributors (ODbL), Overpass API, AWS Terrain Tiles, USGS, World Bank, Nominatim. Created by <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a>. Version <a class="version-link" target="_blank" rel="noopener"></a>. Source code: <a href="https://github.com/gomalhunzai/openhvra" target="_blank" rel="noopener">GitHub</a>.</p>
     </div>
     <div class="help-foot">
       <label><input type="checkbox" id="help-hide"> Don't show this again</label>
