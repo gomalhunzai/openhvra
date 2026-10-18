@@ -73,6 +73,14 @@ export class DEM {
   sample(px, py) {
     return this._sample(px, py);
   }
+  // Inverse of pixel(): [lon, lat] of a pixel position.
+  lonLat(px, py) {
+    const n = 256 * 2 ** this.z;
+    const gx = px + 0.5 + this.x0 * 256;
+    const gy = py + 0.5 + this.y0 * 256;
+    const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * gy) / n))) * 180) / Math.PI;
+    return [(gx / n) * 360 - 180, lat];
+  }
   metresPerPixel(lat) {
     return (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** this.z);
   }
@@ -102,15 +110,15 @@ export class DEM {
 }
 
 // Fetch Terrarium tiles covering bbox at the finest zoom (≤14) needing ≤ 36 tiles.
-export async function loadDEM([w, s, e, n], { signal, onProgress } = {}) {
-  let z = 14;
+export async function loadDEM([w, s, e, n], { signal, onProgress, maxZoom = 14, maxTiles = 36 } = {}) {
+  let z = maxZoom;
   let x0, x1, y0, y1;
   for (; z >= 8; z--) {
     x0 = Math.floor(lonToPx(w, z) / 256);
     x1 = Math.floor(lonToPx(e, z) / 256);
     y0 = Math.floor(latToPx(n, z) / 256);
     y1 = Math.floor(latToPx(s, z) / 256);
-    if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 36) break;
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) <= maxTiles) break;
   }
   const nx = x1 - x0 + 1;
   const ny = y1 - y0 + 1;

@@ -301,3 +301,12 @@ table.calc th { white-space: normal; vertical-align: bottom; }
 .chart-card { background: #fff; border-radius: 8px; padding: 6px; margin: 8px 0; }
 .chart-card .chart-svg svg { width: 100%; height: auto; display: block; }
 .chart-card .row { padding: 4px 2px 2px; }
+
+/* GLOF marks */
+.mark-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.inline-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.inline-field > span { margin: 0; }
+.inline-field input { width: 90px; }
+#mark-list:empty { display: none; }
+.lake-actions { white-space: nowrap; }
+.lake-actions .linklike { font-size: 12px; margin-left: 6px; }

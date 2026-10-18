@@ -3,6 +3,8 @@
 //   circle:    click the centre, then a point on the edge
 //   polygon:   click each vertex; double-click, Enter or click the first
 //              vertex to finish. Backspace removes the last vertex, Esc cancels.
+//   point:     a single click
+//   line:      click each vertex; double-click or Enter to finish
 
 import { circleRing, makeProjection } from './spatial.js';
 
@@ -34,7 +36,8 @@ export class DrawTool {
     this.map.addLayer({ id: 'draw-pts', type: 'circle', source: 'draw', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-color': '#7048e8', 'circle-stroke-width': 2 } });
   }
 
-  start(mode) {
+  // `hint` overrides the default instruction for the mode.
+  start(mode, hint) {
     this.cancel(false);
     this.mode = mode;
     this.pts = [];
@@ -44,7 +47,10 @@ export class DrawTool {
       rect: 'Click one corner of the rectangle, then the opposite corner. Esc cancels.',
       circle: 'Click the centre of the circle, then click to set its radius. Esc cancels.',
       polygon: 'Click to add vertices. Double-click, press Enter or click the first point to finish. Esc cancels.',
+      point: 'Click a location. Esc cancels.',
+      line: 'Click to add points along the line. Double-click or press Enter to finish. Esc cancels.',
     }[mode]);
+    if (hint) this.onHint?.(hint);
   }
 
   cancel(notify = true) {
@@ -100,12 +106,13 @@ export class DrawTool {
       if (Math.hypot(last.x - e.point.x, last.y - e.point.y) < 4) return;
     }
     this.pts.push(p);
+    if (this.mode === 'point') return this._finish();
     if ((this.mode === 'rect' || this.mode === 'circle') && this.pts.length === 2) return this._finish();
     this._render();
   }
 
   _dblclick(e) {
-    if (this.mode !== 'polygon') return;
+    if (this.mode !== 'polygon' && this.mode !== 'line') return;
     e.preventDefault();
     this.lastHandled = e.originalEvent;
     this._finish();
@@ -114,7 +121,7 @@ export class DrawTool {
   _key(e) {
     if (!this.mode) return;
     if (e.key === 'Escape') this.cancel();
-    else if (e.key === 'Enter' && this.mode === 'polygon') this._finish();
+    else if (e.key === 'Enter' && (this.mode === 'polygon' || this.mode === 'line')) this._finish();
     else if (e.key === 'Backspace' && this.pts.length) {
       this.pts.pop();
       this._render();
@@ -123,6 +130,14 @@ export class DrawTool {
 
   _finish() {
     this.cursor = null;
+    if (this.mode === 'point' || this.mode === 'line') {
+      const mode = this.mode;
+      const pts = this.pts.slice();
+      if (mode === 'line' && pts.length < 2) return;
+      this.cancel(false);
+      this.onFinish(mode === 'point' ? { type: 'point', point: pts[0] } : { type: 'line', line: pts });
+      return;
+    }
     const ring = this._ring();
     if (!ring) return;
     const mode = this.mode;

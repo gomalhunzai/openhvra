@@ -9,6 +9,7 @@ import { VERSION, REPO } from './version.js';
 import { figuresFor } from './figures.js';
 import { svgToPng } from './pubcharts.js';
 import { renderMapLayout } from './mapexport.js';
+import { traceLakes, pathIndex, GLOF_DEFAULTS } from './glof.js';
 import { buildPackage, buildingsCSV, facilitiesCSV, matrixCSV, STEPS, stepCSV, stepGeoJSON } from './report.js';
 import { readSpatialFiles, toAoiPolygons, polygonFeatures, featureLabel as fileFeatureName, ACCEPT } from './upload.js';
 import { SVI_INDICATORS, SVI_CLASSES, GROUPS, DEFAULT_SHARES, sviClass, fetchCountryShares, groupCounts, prepareCensus, computeSVI, classifySVI, sviSummary } from './social.js';
@@ -28,6 +29,8 @@ const DEPTH_CLASSES = [
 
 const state = {
   dataset: null,
+  marks: { lakes: [], glaciers: [], paths: {} }, // user-marked glacial lakes, glaciers and outflow paths
+  drawPurpose: null, // set while drawing a GLOF mark instead of an area
   aoi: null, // selected area { type, polygons, name?, radius? } or null for the current view
   radius: 100,
   pinned: false,
@@ -71,11 +74,17 @@ const draw = new DrawTool(map, {
   onFinish: (shape) => {
     drawCtrl.setActive(null);
     setHint(null);
-    setAoi(shape);
+    const purpose = state.drawPurpose;
+    state.drawPurpose = null;
+    if (purpose) addMark(purpose, shape);
+    else setAoi(shape);
   },
   onHint: (text) => {
     setHint(text);
-    if (!text) drawCtrl.setActive(null);
+    if (!text) {
+      drawCtrl.setActive(null);
+      state.drawPurpose = null;
+    }
   },
 });
 const drawCtrl = new DrawControl({ onDraw: startDraw, onClear: () => setAoi(null), onUpload: () => $('upload-file').click() });
@@ -100,6 +109,9 @@ const layerCtrl = new LayerControl({
       hint: 'Run step 5 to show', ramp: ramp(DEPTH_CLASSES) },
     { key: 'svi', label: 'Social vulnerability (step 6)', ids: ['svi-fill', 'svi-pt'], symbol: { kind: 'fill', color: '#b8481b' }, available: false, exclusive: 'colour',
       hint: 'Run step 6 to show', ramp: ramp(SVI_CLASSES) },
+    { key: 'cryo', label: 'Glaciers, lakes & GLOF paths', ids: ['cryo-glacier-fill', 'cryo-glacier-line', 'cryo-paths-other', 'cryo-paths', 'cryo-lakes', 'cryo-marks-line', 'cryo-marks-pt'], symbol: { kind: 'line', color: '#7048e8' },
+      items: [{ label: 'Glacier', color: '#a5d8ff' }, { label: 'Glacial lake (dark = drains through your area)', color: '#1971c2' }, { label: 'Outflow path reaching your area', color: '#7048e8' },
+        { label: 'Outflow path draining elsewhere', color: '#868e96' }, { label: 'Marked by you', color: '#0c8599' }] },
     { key: 'mh', label: 'Multi-hazard / risk (step 7)', ids: ['mh-fill', 'mh-pt'], symbol: { kind: 'fill', color: '#ad2b2b' }, available: false, exclusive: 'colour',
       hint: 'Run step 7 to show', ramp: ramp(SCORE_CLASSES) },
   ],
@@ -131,7 +143,7 @@ function metresToPixels(metres, lat) {
 }
 
 map.on('load', () => {
-  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'mh', 'risk', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
+  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'mh', 'risk', 'cryo-glaciers', 'cryo-lakes', 'cryo-paths', 'cryo-marks', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
     map.addSource(id, { type: 'geojson', data: EMPTY });
   }
   const isPoint = ['==', ['geometry-type'], 'Point'];
@@ -158,6 +170,16 @@ map.on('load', () => {
   map.addLayer({ id: 'mh-pt', type: 'circle', source: 'mh', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': mhColor } });
   map.addLayer({ id: 'risk-fill', type: 'fill', source: 'risk', filter: ['!', isPoint], paint: { 'fill-color': depthColor, 'fill-opacity': 0.9 } });
   map.addLayer({ id: 'risk-pt', type: 'circle', source: 'risk', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 18, 7], 'circle-color': depthColor } });
+  map.addLayer({ id: 'cryo-glacier-fill', type: 'fill', source: 'cryo-glaciers', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#d0ebff', 'fill-opacity': 0.55 } });
+  map.addLayer({ id: 'cryo-glacier-line', type: 'line', source: 'cryo-glaciers', paint: { 'line-color': '#74c0fc', 'line-width': 1.2 } });
+  map.addLayer({ id: 'cryo-paths-other', type: 'line', source: 'cryo-paths', filter: ['!', ['get', 'reaches']], paint: { 'line-color': '#868e96', 'line-width': 2, 'line-dasharray': [2, 1.5] } });
+  map.addLayer({ id: 'cryo-paths', type: 'line', source: 'cryo-paths', filter: ['get', 'reaches'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#7048e8', 'line-width': 3 } });
+  map.addLayer({ id: 'cryo-lakes', type: 'circle', source: 'cryo-lakes', paint: {
+    'circle-color': ['case', ['get', 'reaches'], '#1971c2', '#74c0fc'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5,
+    'circle-radius': ['interpolate', ['linear'], ['sqrt', ['get', 'area']], 50, 4, 1000, 12],
+  } });
+  map.addLayer({ id: 'cryo-marks-line', type: 'line', source: 'cryo-marks', filter: ['!=', ['geometry-type'], 'Point'], paint: { 'line-color': '#0c8599', 'line-width': 2, 'line-dasharray': [2, 1] } });
+  map.addLayer({ id: 'cryo-marks-pt', type: 'circle', source: 'cryo-marks', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 6, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#0c8599', 'circle-stroke-width': 2.5 } });
   map.addLayer({ id: 'facilities', type: 'circle', source: 'facilities', paint: {
     'circle-color': groupColor, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3, 18, 7],
     'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5,
@@ -522,6 +544,12 @@ const HOVER_LAYERS = ['facilities', 'risk-pt', 'risk-fill', 'mh-pt', 'mh-fill', 
 
 function hover(point) {
   if (draw.mode || !state.dataset) return popup.remove();
+  const lake = map.getLayer('cryo-lakes') && map.getLayoutProperty('cryo-lakes', 'visibility') !== 'none' && map.queryRenderedFeatures(point, { layers: ['cryo-lakes'] })[0];
+  if (lake) {
+    const q = lake.properties;
+    popup.setLngLat(map.unproject(point)).setHTML(`<b>${escapeHtml(q.name || 'Glacial lake')}</b><br>${(q.area / 1e4).toFixed(1)} ha · ${q.elev} m · ${escapeHtml(q.source)}<br>${q.reaches ? 'Drains through your area' : 'Drains elsewhere: not used'}${q.method ? `<br>Path: ${escapeHtml(q.method)}` : ''}`).addTo(map);
+    return;
+  }
   const layers = HOVER_LAYERS.filter((l) => map.getLayer(l) && map.getLayoutProperty(l, 'visibility') !== 'none');
   const f = map.queryRenderedFeatures(point, { layers })[0];
   const p = f && state.byFid.get(f.properties.fid);
@@ -1006,7 +1034,7 @@ const HZ_SETTINGS = {
   coastal: () => '<label>Sea level + surge <input type="number" id="hz-coast" min="0" max="20" step="0.5" value="2" style="width:60px"> m</label>',
   avalanche: () => '<label>Snow line <input type="number" id="hz-snow" min="0" max="7000" step="100" value="2500" style="width:72px"> m</label>',
   earthquake: () => 'USGS catalogue + building type',
-  glof: () => 'Lakes ≤ 30 km upstream',
+  glof: () => 'Traced lake outflow paths (below)',
 };
 
 function floodLevel() {
@@ -1030,6 +1058,7 @@ $('lake-file').addEventListener('change', async (e) => {
     const { features } = await readSpatialFiles(files);
     const lakes = lakesFromFeatures(features);
     if (!lakes.length) throw new Error('no points or polygons found');
+    lakes.forEach((l, i) => (l.id = `up:${lakeUploads.length + i}`));
     lakeUploads.push(...lakes);
     $('lake-status').textContent = `${lakeUploads.length} uploaded lake(s) will be included in the GLOF assessment.`;
   } catch (err) {
@@ -1064,17 +1093,20 @@ async function runMH() {
     const { ctx, have } = state.hzCtx;
     const need = {
       quakes: use.has('earthquake') && !have.quakes,
-      glof: use.has('glof') && have.glof !== lakeUploads.length, // refetch when lakes are uploaded
+      glof: use.has('glof') && have.glof !== glofInputsKey(), // refetch when lakes or glaciers are added
       coast: use.has('coastal') && !have.coast,
     };
-    const { parts, errors } = await loadHazardContext(ds.bbox, { need, extraLakes: lakeUploads, onStatus: (t) => ($('mh-status').textContent = t) });
+    const { parts, errors } = await loadHazardContext(ds.bbox, {
+      need, extraLakes: [...lakeUploads, ...markedLakes()], markBoxes: state.marks.glaciers.map((g) => ringBBox(g.ring)),
+      onStatus: (t) => ($('mh-status').textContent = t),
+    });
     Object.assign(ctx, parts);
     for (const k of ['earthquake', 'glof', 'coastal']) {
       const asked = { earthquake: need.quakes, glof: need.glof, coastal: need.coast }[k];
       if (asked) ctx.errors[k] = errors[k];
     }
     if (need.quakes && parts.quakes) have.quakes = true;
-    if (need.glof && parts.lakes) have.glof = lakeUploads.length;
+    if (need.glof && parts.lakes) have.glof = glofInputsKey();
     if (need.coast && parts.coast) have.coast = true;
     if ($('hz-svi').checked && !state.sviDone) {
       $('mh-status').textContent = 'Computing social vulnerability…';
@@ -1087,7 +1119,15 @@ async function runMH() {
       floodLevel: floodLevel(),
       coastLevel: +$('hz-coast').value || 2,
       snowLine: +$('hz-snow').value || 2500,
+      glof: { ...GLOF_DEFAULTS, h0: Math.max(1, +$('glof-h0').value || GLOF_DEFAULTS.h0), h30: Math.max(0, +$('glof-h30').value || GLOF_DEFAULTS.h30) },
     };
+    if (use.has('glof') && ctx.lakes.length) {
+      for (const l of ctx.lakes) l.userPath = state.marks.paths[l.id] ?? null;
+      await traceLakes(ctx.lakes, ctx.waterways ?? [], ds.bbox, P.glof, { onStatus: (t) => ($('mh-status').textContent = t) });
+      P.glofIdx = pathIndex(ds, ctx.lakes);
+      $('mh-status').textContent = 'Scoring hazards for every building…';
+    }
+    showCryo(use.has('glof') ? ctx : null);
     const notes = scoreHazards(ds, dem, ctx, P);
     state.mh = { use, notes, weights: mhWeights(use), ctx, settings: P, ms: Math.round(performance.now() - t0), show: 'mhi' };
     combineMH();
@@ -1165,6 +1205,8 @@ function renderMH() {
     html += `<tr><td>${HAZARDS[k].label}</td><td class="num">${fmt(hi.length)}</td><td class="num">${fmt(Math.round(hi.reduce((a, b) => a + b.pop, 0)))}</td><td class="num">${fmt(crit)}</td><td class="num">${m.rating}</td></tr>`;
   }
   html += '</table>';
+
+  if (mh.use.has('glof') && mh.ctx.lakes?.length) html += lakeTable(mh.ctx);
 
   // Likelihood × impact matrix, then the calculation behind it.
   html += `<div class="sub">Risk matrix</div><table class="matrix" aria-label="Risk matrix: likelihood by impact"><tr><th class="rowh"></th>${IMPACT.map((t) => `<th>${t}</th>`).join('')}</tr>`;
@@ -1255,6 +1297,7 @@ function mhRows() {
 
 function clearMH() {
   state.mh = null;
+  showCryo(null);
   layerCtrl.setAvailable('mh', false);
   map.getSource('mh')?.setData(EMPTY);
   $('mh-results').innerHTML = '';
@@ -1364,6 +1407,153 @@ $('panel-toggle').addEventListener('click', () => {
   setTimeout(() => map.resize(), 50);
 });
 
+// ---- Glaciers, glacial lakes and outflow paths (GLOF) --------------------------------------------
+
+let markSeq = 0;
+const MARK_HINTS = {
+  'lake-point': ['point', 'Click the glacial lake. Esc cancels.'],
+  'lake-outline': ['polygon', 'Click around the lake shore. Double-click, Enter or click the first point to finish. Esc cancels.'],
+  glacier: ['polygon', 'Click around the glacier. Double-click, Enter or click the first point to finish. Esc cancels.'],
+};
+
+// Changes whenever lakes or glaciers are added or removed, so the context is refetched.
+function glofInputsKey() {
+  return [lakeUploads.length, state.marks.lakes.map((l) => l.id).join(), state.marks.glaciers.map((g) => g.id).join()].join('|');
+}
+
+// The user's marked lakes in the form the GLOF model uses.
+function markedLakes() {
+  return state.marks.lakes.map((l) => {
+    if (l.kind === 'point') return { id: l.id, name: 'Marked lake', lon: l.point[0], lat: l.point[1], area: l.area, source: 'marked by you' };
+    const n = l.ring.length - 1;
+    return {
+      id: l.id, name: 'Marked lake', area: l.area, outline: [l.ring], source: 'marked by you',
+      lon: l.ring.slice(0, n).reduce((a, c) => a + c[0], 0) / n, lat: l.ring.slice(0, n).reduce((a, c) => a + c[1], 0) / n,
+    };
+  });
+}
+
+function startMark(kind, extra = {}) {
+  if (draw.mode) draw.cancel(false);
+  state.drawPurpose = { kind, ...extra };
+  if (kind === 'path') {
+    const lake = state.mh?.ctx.lakes.find((l) => l.id === extra.lakeId);
+    draw.start('line', `Draw the outflow of ${lake?.name || 'this lake'}: start at the lake and click downstream along the valley. Double-click or Enter to finish.`);
+  } else {
+    draw.start(...MARK_HINTS[kind]);
+  }
+}
+
+function addMark(purpose, shape) {
+  const id = `mark:${++markSeq}`;
+  if (purpose.kind === 'lake-point') {
+    state.marks.lakes.push({ id, kind: 'point', point: shape.point, area: Math.max(0.1, +$('mark-area').value || 5) * 1e4 });
+  } else if (purpose.kind === 'lake-outline') {
+    state.marks.lakes.push({ id, kind: 'outline', ring: shape.ring, area: lonLatArea(shape.ring) });
+  } else if (purpose.kind === 'glacier') {
+    state.marks.glaciers.push({ id, ring: shape.ring, area: lonLatArea(shape.ring) });
+  } else if (purpose.kind === 'path') {
+    state.marks.paths[purpose.lakeId] = shape.line;
+  }
+  renderMarks();
+  // A drawn path changes only the tracing, so rerun straight away.
+  if (purpose.kind === 'path' && state.mh) runMH();
+  else if (state.mh) $('lake-status').textContent = 'Run the multi-hazard analysis again to include your new mark.';
+}
+
+function renderMarks() {
+  const M = state.marks;
+  const lakeName = (id) => state.mh?.ctx.lakes.find((l) => l.id === id)?.name || 'lake';
+  const items = [
+    ...M.lakes.map((l) => [`lake|${l.id}`, `Lake (${l.kind}, ${(l.area / 1e4).toFixed(1)} ha)`]),
+    ...M.glaciers.map((g) => [`glacier|${g.id}`, `Glacier (${(g.area / 1e6).toFixed(2)} km²)`]),
+    ...Object.keys(M.paths).map((id) => [`path|${id}`, `Outflow path drawn for ${lakeName(id)}`]),
+  ];
+  $('mark-list').innerHTML = items.map(([key, label]) =>
+    `<li class="done"><span class="mark">✎</span><span class="label">${escapeHtml(label)}</span><button type="button" class="btn mini" data-del="${key}" title="Delete">Delete</button></li>`).join('');
+  $('dl-marks').disabled = !items.length;
+  map.getSource('cryo-marks')?.setData(marksGeoJSON());
+}
+
+function marksGeoJSON() {
+  const M = state.marks;
+  const f = (geometry, properties) => ({ type: 'Feature', geometry, properties });
+  return {
+    type: 'FeatureCollection',
+    features: [
+      ...M.lakes.map((l) => (l.kind === 'point'
+        ? f({ type: 'Point', coordinates: l.point }, { kind: 'glacial lake', area_ha: +(l.area / 1e4).toFixed(2), source: 'OpenHVRA mark' })
+        : f({ type: 'Polygon', coordinates: [l.ring] }, { kind: 'glacial lake', area_ha: +(l.area / 1e4).toFixed(2), source: 'OpenHVRA mark' }))),
+      ...M.glaciers.map((g) => f({ type: 'Polygon', coordinates: [g.ring] }, { kind: 'glacier', area_km2: +(g.area / 1e6).toFixed(3), source: 'OpenHVRA mark' })),
+      ...Object.entries(M.paths).map(([id, line]) => f({ type: 'LineString', coordinates: line }, { kind: 'lake outflow path', lake: id, source: 'OpenHVRA mark' })),
+    ],
+  };
+}
+
+// Show downloaded glaciers, lakes and traced paths (null clears them).
+function showCryo(ctx) {
+  const fc = (features) => ({ type: 'FeatureCollection', features });
+  map.getSource('cryo-glaciers')?.setData(fc(ctx?.glacierFeatures ?? []));
+  map.getSource('cryo-lakes')?.setData(fc((ctx?.lakes ?? []).map((l) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [l.lon, l.lat] },
+    properties: { id: l.id, name: l.name, area: l.area, elev: Math.round(l.elev ?? 0), reaches: !!l.reaches, method: l.method ?? '', source: l.source },
+  }))));
+  map.getSource('cryo-paths')?.setData(fc((ctx?.lakes ?? []).filter((l) => l.path?.length > 1).map((l) => ({
+    type: 'Feature', geometry: { type: 'LineString', coordinates: l.path }, properties: { id: l.id, reaches: !!l.reaches },
+  }))));
+}
+
+function lakeTable(ctx) {
+  const lakes = ctx.lakes;
+  const reach = lakes.filter((l) => l.reaches).length;
+  let html = `<div class="sub">Glacial lakes and outflow paths</div>
+    <p class="note">${fmt(ctx.glaciers ?? 0)} glaciers and ${fmt(lakes.length)} glacial lake(s) considered; <b>${reach}</b> drain through your area and are used.
+    Paths: purple = reaches your area, grey = drains elsewhere. If a path looks wrong, draw it yourself.</p>
+    <div class="table-scroll"><table class="list calc"><tr><th>Lake</th><th class="num">Area (ha)</th><th class="num">Elev. (m)</th><th>Path traced by</th><th class="num">Reaches area</th><th></th></tr>`;
+  for (const l of lakes) {
+    html += `<tr><td>${escapeHtml(l.name || 'Unnamed lake')}<br><span class="muted small">${escapeHtml(l.source)}</span></td>
+      <td class="num">${(l.area / 1e4).toFixed(1)}</td><td class="num">${Number.isFinite(l.elev) ? fmt(Math.round(l.elev)) : '—'}</td>
+      <td>${escapeHtml(l.method || 'not traced')}</td>
+      <td class="num">${l.reaches ? `yes, ${l.distToAreaKm.toFixed(1)} km` : 'no'}</td>
+      <td class="lake-actions"><button type="button" class="linklike" data-lake-zoom="${l.id}">Zoom</button><button type="button" class="linklike" data-lake-path="${l.id}">Draw path</button>${
+        state.marks.paths[l.id] ? `<button type="button" class="linklike" data-lake-reset="${l.id}">Use traced path</button>` : ''}</td></tr>`;
+  }
+  return `${html}</table></div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  const mark = t.closest('[data-mark]')?.dataset.mark;
+  if (mark) return startMark(mark);
+  const del = t.closest('[data-del]')?.dataset.del;
+  if (del) {
+    const [kind, id] = del.split('|');
+    if (kind === 'lake') state.marks.lakes = state.marks.lakes.filter((l) => l.id !== id);
+    if (kind === 'glacier') state.marks.glaciers = state.marks.glaciers.filter((g) => g.id !== id);
+    if (kind === 'path') delete state.marks.paths[id];
+    renderMarks();
+    if (state.mh) $('lake-status').textContent = 'Run the multi-hazard analysis again to apply the change.';
+    return;
+  }
+  const lakeId = t.closest('[data-lake-zoom],[data-lake-path],[data-lake-reset]');
+  if (!lakeId || !state.mh) return;
+  const { lakeZoom, lakePath, lakeReset } = lakeId.dataset;
+  if (lakeZoom) {
+    const l = state.mh.ctx.lakes.find((x) => x.id === lakeZoom);
+    const pts = l.path?.length ? [[l.lon, l.lat], ...l.path] : [[l.lon, l.lat]];
+    const [w, s, ea, n] = ringBBox(pts);
+    map.fitBounds([[w, s], [ea, n]], { padding: 60, maxZoom: 14, duration: 900 });
+  } else if (lakePath) {
+    startMark('path', { lakeId: lakePath });
+  } else if (lakeReset) {
+    delete state.marks.paths[lakeReset];
+    renderMarks();
+    runMH();
+  }
+});
+
+$('dl-marks').addEventListener('click', () => download(`openhvra-glacier-lake-marks-${stamp()}.geojson`, JSON.stringify(marksGeoJSON()), 'application/geo+json'));
+
 // ---- Map and chart exports (per step) -----------------------------------------------------------
 
 const PROBE_LAYERS = ['probe-fill', 'probe-line', 'probe-hits', 'probe-links'];
@@ -1377,6 +1567,9 @@ const ORIENT_LEGEND = [
 // Facility dots use categorical colours that would clash with the thematic
 // colour scales, so they only appear on the overview map.
 const NO_FACILITIES = ['facilities'];
+// Glaciers, lakes and outflow paths appear only on the GLOF map (user marks never).
+const CRYO = ['cryo-glacier-fill', 'cryo-glacier-line', 'cryo-paths-other', 'cryo-paths', 'cryo-lakes'];
+const MARKS = ['cryo-marks-line', 'cryo-marks-pt'];
 const CREDITS = 'Data © OpenStreetMap contributors (ODbL), AWS Terrain Tiles, USGS, World Bank';
 
 // Map layout settings for a step's map. `view` picks the multi-hazard view.
@@ -1391,13 +1584,13 @@ function mapSpec(step, view) {
   const fmtN = (v) => fmt(Math.round(v));
   if (step === 'population') {
     const sum = state.dataset.summary();
-    return { ...base, file: 'map-buildings-facilities', title: 'Buildings and facilities', show: ['facilities'], hide: [...PROBE_LAYERS, ...others(null)],
+    return { ...base, file: 'map-buildings-facilities', title: 'Buildings and facilities', show: ['facilities'], hide: [...PROBE_LAYERS, ...CRYO, ...MARKS, ...others(null)],
       legend: [{ label: 'Building', color: '#5c6b7a', kind: 'fill' }, ...base.legend, ...Object.values(FACILITY_GROUPS).map((g) => ({ label: g.label, color: g.color, kind: 'dot' }))], stats: [['estimated residents', fmtN(sum.pop)], ['buildings', fmtN(sum.buildings)], ['facilities', fmtN(sum.facilities)]] };
   }
   if (step === 'exposure') {
     const E = state.exposure;
     return { ...base, file: 'map-exposure', title: `Exposure within ${E.dist} m of ${SOURCES[E.sourceKey].label.toLowerCase()}`,
-      show: COLOUR_LAYERS.exposure, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('exposure')],
+      show: COLOUR_LAYERS.exposure, hide: [...PROBE_LAYERS, ...CRYO, ...MARKS, ...NO_FACILITIES, ...others('exposure')],
       legend: [{ label: E.elevation ? `Flood-exposed (≤ ${E.maxHeight} m above water)` : 'Within distance', color: '#e03131', kind: 'fill' },
         ...(E.elevation ? [{ label: 'Steep bank (erosion risk)', color: '#f08c00', kind: 'fill' }] : []),
         { label: 'Exposed facility', color: '#e03131', kind: 'ring' }, { label: `${E.dist} m buffer`, color: '#fcc2c2', kind: 'fill' }, ...base.legend],
@@ -1407,13 +1600,13 @@ function mapSpec(step, view) {
     const R = state.risk;
     const sc = R.scenarios[state.riskScenario];
     return { ...base, file: `map-flood-depth-${sc.rp}yr`, title: `Flood depth: ${sc.rp}-year flood (${sc.level} m above the channel)`,
-      show: COLOUR_LAYERS.depth, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('depth')], legendTitle: 'Flood depth', ramp: DEPTH_CLASSES.map((c) => ({ label: c.label, color: c.color })),
+      show: COLOUR_LAYERS.depth, hide: [...PROBE_LAYERS, ...CRYO, ...MARKS, ...NO_FACILITIES, ...others('depth')], legendTitle: 'Flood depth', ramp: DEPTH_CLASSES.map((c) => ({ label: c.label, color: c.color })),
       stats: [['buildings flooded', fmtN(sc.buildings)], ['people affected', fmtN(sc.pop)], [`loss (${R.params.currency})`, compact(sc.loss)], [`average annual loss (${R.params.currency})`, compact(R.aal)]] };
   }
   if (step === 'svi') {
     const sv = sviSummary(state.dataset);
     return { ...base, file: 'map-social-vulnerability', title: 'Social vulnerability of homes',
-      show: COLOUR_LAYERS.svi, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('svi')], legendTitle: `Social vulnerability (${state.sviDone.mode})`, ramp: SVI_CLASSES.map((c) => ({ label: c.label, color: c.color })),
+      show: COLOUR_LAYERS.svi, hide: [...PROBE_LAYERS, ...CRYO, ...MARKS, ...NO_FACILITIES, ...others('svi')], legendTitle: `Social vulnerability (${state.sviDone.mode})`, ramp: SVI_CLASSES.map((c) => ({ label: c.label, color: c.color })),
       stats: [['residents in high or very high vulnerability homes', fmtN(sv.classes[3].pop + sv.classes[4].pop)], ['homes scored', fmtN(sv.classes.reduce((a, c) => a + c.buildings, 0))]] };
   }
   if (step === 'mh') {
@@ -1421,8 +1614,24 @@ function mapSpec(step, view) {
     const label = k === 'mhi' ? 'Multi-hazard index' : k === 'risk' ? 'Combined risk (hazard × social vulnerability)' : `${HAZARDS[k].label} hazard`;
     const homes = state.dataset.buildings.filter((b) => b.pop > 0 && b.hz);
     const high = homes.filter((b) => (mhValue(b, k) ?? 0) >= HIGH).reduce((a, b) => a + b.pop, 0);
-    return { ...base, file: `map-${k === 'mhi' ? 'multi-hazard' : k === 'risk' ? 'combined-risk' : `hazard-${k}`}`, title: label,
-      show: COLOUR_LAYERS.mh, hide: [...PROBE_LAYERS, ...NO_FACILITIES, ...others('mh')], data: { mh: mhFeatures(k) }, legendTitle: label, ramp: SCORE_CLASSES.map((c) => ({ label: c.label, color: c.color })),
+    const glof = k === 'glof';
+    const glofLegend = glof ? [
+      { label: 'Glacier', color: '#a5d8ff', kind: 'fill' },
+      { label: 'Glacial lake used (drains through area)', color: '#1971c2', kind: 'dot' },
+      { label: 'Glacial lake not used (drains elsewhere)', color: '#74c0fc', kind: 'dot' },
+      { label: 'Outflow path reaching the area', color: '#7048e8', kind: 'line' },
+      { label: 'Outflow path draining elsewhere', color: '#868e96', kind: 'dash' },
+    ] : [];
+    // The GLOF map is framed to include the lakes and their paths.
+    let bounds = base.bounds;
+    if (glof && state.mh.ctx.lakes?.length) {
+      const used = state.mh.ctx.lakes.filter((l) => l.reaches);
+      const pts = [...used.flatMap((l) => [[l.lon, l.lat], ...l.path]), base.bounds[0], base.bounds[1]];
+      const [bw, bs, be, bn] = ringBBox(pts);
+      bounds = [[bw, bs], [be, bn]];
+    }
+    return { ...base, bounds, legend: [...glofLegend, ...base.legend], file: `map-${k === 'mhi' ? 'multi-hazard' : k === 'risk' ? 'combined-risk' : `hazard-${k}`}`, title: label,
+      show: glof ? [...COLOUR_LAYERS.mh, ...CRYO] : COLOUR_LAYERS.mh, hide: [...PROBE_LAYERS, ...(glof ? [] : CRYO), ...MARKS, ...NO_FACILITIES, ...others('mh')], data: { mh: mhFeatures(k) }, legendTitle: label, ramp: SCORE_CLASSES.map((c) => ({ label: c.label, color: c.color })),
       stats: [[`residents at score ≥ ${HIGH}`, fmtN(high)], ['residents assessed', fmtN(homes.reduce((a, b) => a + b.pop, 0))]] };
   }
   return null;

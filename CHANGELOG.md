@@ -8,6 +8,17 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.10.0] – 2026-10-18
+
+### Method change: GLOF (results differ from 0.9.x)
+- **Lakes now count only if their water can reach the area.** Each glacial lake's outflow is traced downstream: along OSM waterways (which are drawn in the direction of flow), joining at confluences and bridging gaps up to 60 m; by steepest descent on regional elevation where no stream is mapped; or along a path drawn by the user. Only lakes whose path passes through the analysed area are used. Previously any lake within 30 km and 100 m higher counted, which produced false positives from neighbouring valleys.
+- **Homes are scored along the path, not by distance to the lake:** flood height (default 20 m at the lake, falling to 5 m at 30 km; both adjustable) minus the home's height above the path, within 600 m of the path.
+
+### Added
+- Glacier outlines, glacial lakes and traced outflow paths on the map (new "Glaciers, lakes & GLOF paths" layer), a lake table in step 7 (area, elevation, how the path was traced, whether it reaches the area) and lake tooltips.
+- **Mark lake** (point or outline), **Mark glacier** (also searches OSM for lakes near it) and **Draw path** for any lake, with delete and download of your marks as GeoJSON.
+- GLOF map export shows glaciers, lakes and paths; the ZIP adds `layers/glaciers.geojson`, `layers/glof_outflow_paths.geojson` and lake reach details.
+
 ## [0.9.1] – 2026-10-18
 
 No method changes: results are identical to 0.9.0.
@@ -35,5 +46,6 @@ First numbered release (beta). It includes:
 - Publication map layouts (A4 landscape, 300 DPI) and charts (SVG + 300-DPI PNG) for every step, also included in the ZIP.
 - Version number shown in the app and stamped on every export; `CITATION.cff` for citing the software.
 
+[0.10.0]: https://github.com/gomalhunzai/openhvra/releases/tag/v0.10.0
 [0.9.1]: https://github.com/gomalhunzai/openhvra/releases/tag/v0.9.1
 [0.9.0]: https://github.com/gomalhunzai/openhvra/releases/tag/v0.9.0

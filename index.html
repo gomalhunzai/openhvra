@@ -219,12 +219,26 @@
           <thead><tr><th>Hazard</th><th>Weight</th><th>Setting</th></tr></thead>
           <tbody></tbody>
         </table>
+        <div class="sub">Glaciers &amp; glacial lakes <span class="muted">(for GLOF)</span></div>
+        <p class="muted small">Each lake's outflow is traced downstream along OSM streams (or the terrain). Only lakes whose path passes through your area count. Check the traced paths on the map, and mark lakes or glaciers that OSM is missing.</p>
+        <div class="grid2 even">
+          <label class="field"><span>Flood height at the lake (m)</span><input id="glof-h0" type="number" min="1" max="200" step="1" value="20"></label>
+          <label class="field"><span>Flood height at 30 km (m)</span><input id="glof-h30" type="number" min="0" max="100" step="1" value="5"></label>
+        </div>
+        <div class="mark-row">
+          <button type="button" class="btn mini" data-mark="lake-point">Mark lake (point)</button>
+          <button type="button" class="btn mini" data-mark="lake-outline">Mark lake (outline)</button>
+          <button type="button" class="btn mini" data-mark="glacier">Mark glacier</button>
+        </div>
+        <label class="field inline-field"><span>Area of a point lake (ha)</span><input id="mark-area" type="number" min="0.1" max="10000" step="0.5" value="5"></label>
+        <ul id="mark-list" class="report-list"></ul>
         <div class="upload-row">
-          <label class="btn" for="lake-file">Add glacial lake inventory</label>
+          <label class="btn" for="lake-file">Upload lake inventory</label>
           <input type="file" id="lake-file" multiple hidden>
-          <span class="muted small">Optional: lake points or polygons (e.g. ICIMOD inventory) for GLOF, as OSM maps few glacial lakes.</span>
+          <span class="muted small">Lake points or polygons, e.g. an ICIMOD inventory (any supported format).</span>
         </div>
         <p id="lake-status" class="note"></p>
+        <button type="button" class="btn mini" id="dl-marks" disabled>Download my marks (GeoJSON)</button>
         <label class="field check"><input type="checkbox" id="hz-svi" checked><span>Combine with social vulnerability (step 6)</span></label>
         <button id="run-mh" class="btn primary block" disabled>Run multi-hazard analysis</button>
         <p id="mh-status" class="note"></p>
@@ -280,7 +294,7 @@
         <li><b>Explore.</b> Move the mouse over the map to see live counts within the chosen radius, and click to pin the circle. Step 4 counts everything within a set distance of rivers or roads. For rivers, it also uses elevation to leave out buildings well above the water and to flag buildings on steep, erodible banks.</li>
         <li><b>Flood risk and risk finance</b> (step 5). Enter the water level for each return period and the local construction costs, then run it to get losses, the loss curve, average annual loss and the financing layers.</li>
         <li><b>Social vulnerability</b> (step 6). Click <i>Use national figures</i> to fill in the vulnerable-group shares, optionally upload a census layer such as poverty by ward, then compute.</li>
-        <li><b>Multi-hazard risk</b> (step 7). Choose the hazards and their weights, optionally add a glacial lake inventory, then run it to see the risk matrix, the hotspots and the combined risk map.</li>
+        <li><b>Multi-hazard risk</b> (step 7). Choose the hazards and their weights, and for GLOF check the glaciers, lakes and traced outflow paths on the map: mark missing lakes or glaciers, or draw a lake's path yourself if it looks wrong. Then run it to see the risk matrix, the hotspots and the combined risk map.</li>
         <li><b>Report and export</b> (step 8). <i>Download full package</i> gives you a ZIP with a written summary, all your settings, a detailed table for each step you ran, publication maps and charts, tables for every building and facility with all analysis values, the risk-matrix calculation, and the map layers for QGIS. The checklist has a CSV for each completed step. Each step also has a <i>Map (PNG, 300 DPI)</i> button and charts you can download as SVG or PNG for reports and papers. Hover over any building or facility for its details. The <b>Layers</b> box at the bottom-left of the map switches the basemap, turns layers on and off, and shows each layer's legend.</li>
       </ol>
 

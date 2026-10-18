@@ -133,6 +133,13 @@ function parameterRows(S) {
     add('7 Multi-hazard', 'river_flood_level_m', S.mh.settings.floodLevel);
     if (S.mh.use.has('coastal')) add('7 Multi-hazard', 'sea_level_plus_surge_m', S.mh.settings.coastLevel);
     if (S.mh.use.has('avalanche')) add('7 Multi-hazard', 'snow_line_m', S.mh.settings.snowLine);
+    if (S.mh.use.has('glof')) {
+      add('7 Multi-hazard', 'glof_flood_height_at_lake_m', S.mh.settings.glof.h0);
+      add('7 Multi-hazard', 'glof_flood_height_at_30km_m', S.mh.settings.glof.h30);
+      add('7 Multi-hazard', 'glof_path_corridor_m', S.mh.settings.glof.corridor);
+      add('7 Multi-hazard', 'glof_lakes_considered', S.mh.ctx.lakes?.length ?? 0);
+      add('7 Multi-hazard', 'glof_lakes_draining_through_area', (S.mh.ctx.lakes ?? []).filter((l) => l.reaches).length);
+    }
     add('7 Multi-hazard', 'high_hazard_threshold', HIGH);
     add('7 Multi-hazard', 'background_noise_floor', NOISE_FLOOR);
     add('7 Multi-hazard', 'combined_with_social_vulnerability', S.mh.withSvi);
@@ -253,6 +260,13 @@ function summaryText(S) {
       L.push(`Earthquake: ${q.n150} M5+ within 150 km since 1973 (~1 every ${q.rate > 0 ? (1 / q.rate).toFixed(1) : '∞'} yr); hazard score ${q.score.toFixed(2)}.`);
     }
     for (const r of hazardRows(S)) L.push(`  ${r.hazard}: ${r.status === 'assessed' ? `${fmt(r.homes_high)} homes / ${fmt(r.residents_high)} residents at high hazard, ${r.critical_facilities_high} critical facilities, rating ${r.rating}` : r.status}`);
+    if (S.mh.use.has('glof') && S.mh.ctx.lakes?.length) {
+      L.push('', `Glacial lakes (${S.mh.ctx.glaciers ?? 0} glaciers nearby). Only lakes whose traced outflow passes through the area are used;`);
+      L.push(`flood height ${S.mh.settings.glof.h0} m at the lake falling to ${S.mh.settings.glof.h30} m at 30 km, within ${S.mh.settings.glof.corridor} m of the path.`);
+      for (const l of S.mh.ctx.lakes) {
+        L.push(`  ${l.name || 'Unnamed lake'} (${l.source}): ${(l.area / 1e4).toFixed(1)} ha, ${Number.isFinite(l.elev) ? Math.round(l.elev) : '?'} m; path by ${l.method || 'n/a'}; ${l.reaches ? `reaches the area after ${l.distToAreaKm.toFixed(1)} km: USED` : 'drains elsewhere: not used'}`);
+      }
+    }
     L.push('', 'Risk matrix calculation:');
     for (const m of S.mh.matrix) {
       L.push(`  ${HAZARDS[m.key].label}: likelihood = 1 + floor(5 × p90 ${m.p90.toFixed(2)}) = ${m.likelihood} (${LIKELIHOOD[m.likelihood - 1]}); ` +
@@ -436,7 +450,16 @@ export async function buildPackage(S) {
   put('layers/roads.geojson', fc(ds.lines.filter((l) => l.kind === 'road').map(line)));
   put('layers/waterways.geojson', fc(ds.lines.filter((l) => l.kind === 'water').map(line)));
   if (S.mh?.ctx.lakes?.length) {
-    put('layers/glacial_lakes.geojson', fc(S.mh.ctx.lakes.map((l) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r6(l.lon), r6(l.lat)] }, properties: { name: l.name, area_m2: Math.round(l.area), elevation_m: Math.round(l.elev), source: l.source } }))));
+    put('layers/glacial_lakes.geojson', fc(S.mh.ctx.lakes.map((l) => ({
+      type: 'Feature', geometry: { type: 'Point', coordinates: [r6(l.lon), r6(l.lat)] },
+      properties: { id: l.id, name: l.name, area_ha: r2(l.area / 1e4), elevation_m: Number.isFinite(l.elev) ? Math.round(l.elev) : null, source: l.source,
+        path_method: l.method || null, path_km: r1(l.pathKm), drains_through_area: !!l.reaches, km_to_area: l.reaches ? r1(l.distToAreaKm) : null },
+    }))));
+    const traced = S.mh.ctx.lakes.filter((l) => l.path?.length > 1);
+    if (traced.length) put('layers/glof_outflow_paths.geojson', fc(traced.map((l) => ({ type: 'Feature', geometry: roundGeom({ type: 'LineString', coordinates: l.path }), properties: { lake_id: l.id, lake: l.name, method: l.method, length_km: r1(l.pathKm), drains_through_area: !!l.reaches } }))));
+  }
+  if (S.mh?.ctx.glacierFeatures?.length) {
+    put('layers/glaciers.geojson', fc(S.mh.ctx.glacierFeatures.map((g) => ({ ...g, geometry: roundGeom(g.geometry) }))));
   }
   // Publication charts (SVG + 300-DPI PNG) for every step that ran.
   for (const st of STEPS) {

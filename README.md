@@ -8,7 +8,7 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.9.1 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.10.0 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
 
@@ -59,7 +59,7 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    | Landslide | Steepest slope nearby, local relief, and undercutting by streams or road cuts |
    | Earthquake | Regional seismicity from the **USGS catalogue** (M5+ frequency since 1973, largest event within 100 km) × building vulnerability (material, storeys, fragile building types, steep or soft riverside ground). No shaking scenario is needed. |
    | Coastal flood | Ground below a chosen sea level plus surge, within 10 km of the coast |
-   | Glacial lake outburst (GLOF) | Valley-floor buildings below, and within 30 km of, glacial lakes. Lakes come from OSM (water bodies within 3 km of glaciers) plus an optional uploaded lake inventory. |
+   | Glacial lake outburst (GLOF) | Each glacial lake's outflow is **traced downstream** (along OSM streams, or the terrain where none is mapped, or a path you draw). Only lakes whose path passes through your area count. Homes are scored by their height above the path against a flood height that falls downstream (default 20 m at the lake to 5 m at 30 km). Lakes come from OSM (near glaciers), uploaded inventories, or lakes and glaciers you **mark on the map**; glaciers, lakes and paths are shown so you can check them. |
    | Snow avalanche | Steep (28–55°) slopes above a chosen snow line, using the alpha-angle runout rule |
 
    The scores combine into a **multi-hazard index** (1 − Π(1 − weight × score)), so one severe hazard stays severe and several moderate ones add up. Together with social vulnerability, this gives a **combined risk** score (√(hazard × vulnerability), as in INFORM).
@@ -154,7 +154,7 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 - **OSM coverage varies.** Missing buildings mean missing people and losses. Check against the satellite basemap.
 - **Population** is a floor-area model. Calibrate it with a census or WorldPop total whenever you can.
 - **The flood hazard is a proxy.** "Height above nearest waterway" ignores flood defences, channel capacity, backwater effects and rainfall flooding. The elevation data is about 30 m resolution with several metres of vertical error, and often includes buildings and trees. Replace the default water levels with values from local hydrology or a flood study.
-- **The multi-hazard scores are terrain and map proxies.** They don't model hazards physically: there is no flow routing for flash floods or GLOFs (a lake in a neighbouring valley may be counted), no soil or rock data for landslides and earthquakes, and no snow climate for avalanches. Use them to find hotspots, then confirm with official hazard maps and field checks.
+- **The multi-hazard scores are terrain and map proxies.** They don't model hazards physically: there is no flow routing for flash floods; GLOF paths are traced on ~30–60 m elevation where streams are unmapped and can go wrong in narrow gorges or flat valley floors (check them on the map and draw the path yourself if needed), no soil or rock data for landslides and earthquakes, and no snow climate for avalanches. Use them to find hotspots, then confirm with official hazard maps and field checks.
 - **The social vulnerability index uses proxies.** Where OSM is missing clinics, shelters or roads, areas look more vulnerable than they are. Vulnerable-group counts apply national shares evenly, so for local differences upload census data.
 - **The damage curves and costs are defaults.** Use national replacement costs, for example from the JRC or national statistics.
 - **AAL** comes from a handful of scenarios: no damage is assumed below the most frequent one, and the rarest one's loss is assumed for anything rarer.

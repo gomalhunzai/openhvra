@@ -7,7 +7,8 @@
 //   earthquake regional seismicity (USGS catalogue) × building vulnerability
 //              (material, storeys, fragile type, steep or soft riverside ground)
 //   coastal   ground below a chosen sea level within 10 km of the coast
-//   glof      glacial lake outburst: valley-floor homes below and within 30 km of a glacial lake
+//   glof      glacial lake outburst: homes along the traced outflow path of lakes that
+//             drain through the area, scored by height above the path (glof.js)
 //   avalanche steep snow-prone slopes above, using the alpha-angle runout rule
 // The multi-hazard index combines them as 1 − Π(1 − wᵢ·sᵢ′), so one severe
 // hazard stays severe and several moderate ones add up. sᵢ′ rescales scores
@@ -19,6 +20,7 @@ import { SOURCES } from './analysis.js';
 import { runQuery } from './osm.js';
 import { loadDEM } from './risk.js';
 import { GridIndex, nearestOnSeg, lonLatArea } from './spatial.js';
+import { parseGlofElements, glofScore, GLOF_DEFAULTS } from './glof.js';
 
 export const HAZARDS = {
   river: { label: 'River flood', short: 'River flood' },
@@ -78,13 +80,23 @@ async function fetchQuakes(lon, lat, signal) {
 
 const WATER_EXCLUDE = 'river|canal|stream|ditch|drain|wastewater|reflecting_pool|fountain|moat|lock';
 
-function glacierQuery(bbox) {
-  const g = pad(bbox, 0.3); // ~30 km for glaciers and their lakes
-  return `[out:json][timeout:120];
-nwr["natural"="glacier"](${g[1]},${g[0]},${g[3]},${g[2]})->.g;
-.g out tags bb qt;
-(way["natural"="water"]["water"!~"^(${WATER_EXCLUDE})$"](around.g:3000);relation["natural"="water"]["water"!~"^(${WATER_EXCLUDE})$"](around.g:3000););
-out tags bb qt;`;
+const GLOF_WATERWAYS = 'river|stream|canal|tidal_channel|brook|drain';
+
+// Glacier outlines and lakes within ~30 km, lakes near user-marked glaciers
+// (markBoxes: [[w,s,e,n]]) and the regional stream network for tracing outflows.
+function glacierQuery(bbox, markBoxes = []) {
+  const g = pad(bbox, 0.3);
+  const net = pad(bbox, 0.35);
+  const b = (x) => `${x[1]},${x[0]},${x[3]},${x[2]}`;
+  const water = `["natural"="water"]["water"!~"^(${WATER_EXCLUDE})$"]`;
+  const marks = markBoxes.map((m) => `way${water}(${b(pad(m, 0.03))});relation${water}(${b(pad(m, 0.03))});`).join('');
+  return `[out:json][timeout:180];
+nwr["natural"="glacier"](${b(g)})->.g;
+.g out tags geom qt;
+(way${water}(around.g:3000);relation${water}(around.g:3000);${marks});
+out tags geom qt;
+way["waterway"~"^(${GLOF_WATERWAYS})$"](${b(net)});
+out tags geom qt;`;
 }
 
 function coastQuery(bbox) {
@@ -92,17 +104,6 @@ function coastQuery(bbox) {
   return `[out:json][timeout:120];
 way["natural"="coastline"](${c[1]},${c[0]},${c[3]},${c[2]});
 out tags geom qt;`;
-}
-
-function boundsLake(el) {
-  const { minlat, minlon, maxlat, maxlon } = el.bounds;
-  return {
-    lon: (minlon + maxlon) / 2,
-    lat: (minlat + maxlat) / 2,
-    area: 0.6 * lonLatArea([[minlon, minlat], [maxlon, minlat], [maxlon, maxlat], [minlon, maxlat]]),
-    name: el.tags?.name ?? '',
-    source: 'OpenStreetMap',
-  };
 }
 
 // Lakes from an uploaded inventory (points or polygons).
@@ -119,7 +120,7 @@ export function lakesFromFeatures(features) {
       const n = ring.length - 1;
       const lon = ring.slice(0, n).reduce((a, c) => a + c[0], 0) / n;
       const lat = ring.slice(0, n).reduce((a, c) => a + c[1], 0) / n;
-      out.push({ lon, lat, area: lonLatArea(ring), name, source: 'uploaded' });
+      out.push({ lon, lat, area: lonLatArea(ring), outline: [ring], name, source: 'uploaded' });
     }
   }
   return out;
@@ -130,7 +131,7 @@ export function lakesFromFeatures(features) {
 //   need.glof   → glaciers and nearby lakes from OSM, plus lake elevations (GLOF)
 //   need.coast  → coastline from OSM (coastal flood)
 // Returns just those parts, so the caller can keep and merge them.
-export async function loadHazardContext(bbox, { need = {}, signal, onStatus, extraLakes = [] } = {}) {
+export async function loadHazardContext(bbox, { need = {}, signal, onStatus, extraLakes = [], markBoxes = [] } = {}) {
   const [w, s, e, n] = bbox;
   const parts = {};
   const errors = {};
@@ -139,7 +140,7 @@ export async function loadHazardContext(bbox, { need = {}, signal, onStatus, ext
   onStatus?.(`Downloading ${what.join(', ')}…`);
   const [q, gl, co] = await Promise.allSettled([
     need.quakes ? fetchQuakes((w + e) / 2, (s + n) / 2, signal) : null,
-    need.glof ? runQuery(glacierQuery(bbox), { signal }) : null,
+    need.glof ? runQuery(glacierQuery(bbox, markBoxes), { signal }) : null,
     need.coast ? runQuery(coastQuery(bbox), { signal }) : null,
   ]);
   if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
@@ -153,11 +154,12 @@ export async function loadHazardContext(bbox, { need = {}, signal, onStatus, ext
   }
   if (need.glof) {
     if (gl.status === 'fulfilled') {
-      parts.glaciers = gl.value.filter((el) => el.tags?.natural === 'glacier').length;
-      let lakes = gl.value.filter((el) => el.tags?.natural === 'water' && el.bounds).map(boundsLake);
-      lakes.push(...extraLakes);
-      // Keep the 40 largest lakes and look up their elevation.
-      lakes = lakes.sort((a, b) => b.area - a.area).slice(0, 40);
+      const g = parseGlofElements(gl.value);
+      parts.glaciers = g.glaciers.length;
+      parts.glacierFeatures = g.glaciers;
+      parts.waterways = g.waterways;
+      // OSM lakes (40 largest) plus uploaded and user-marked lakes; look up elevations.
+      let lakes = g.lakes.sort((a, b) => b.area - a.area).slice(0, 40).concat(extraLakes.map((l) => ({ ...l })));
       if (lakes.length) {
         onStatus?.(`Looking up elevation of ${lakes.length} glacial lake(s)…`);
         await Promise.all(lakes.map(async (l) => {
@@ -169,7 +171,7 @@ export async function loadHazardContext(bbox, { need = {}, signal, onStatus, ext
           }
         }));
       }
-      parts.lakes = lakes.filter((l) => Number.isFinite(l.elev));
+      parts.lakes = lakes;
     } else {
       errors.glof = gl.reason?.message ?? 'glacier data unavailable';
     }
@@ -212,8 +214,11 @@ export function scoreHazards(ds, dem, ctx, P) {
   if (has('earthquake') && !ctx.quakes) notes.earthquake = `Earthquake catalogue unavailable (${ctx.errors.earthquake ?? 'unknown error'}).`;
   if (has('glof') && ctx.errors.glof) notes.glof = `Glacier data unavailable (${ctx.errors.glof}).`;
   else if (has('glof') && !ctx.lakes.length) notes.glof = ctx.glaciers
-    ? `${ctx.glaciers} glaciers within ~30 km but no glacial lakes are mapped. Upload a lake inventory to assess GLOF.`
-    : 'No glaciers within ~30 km: not applicable.';
+    ? `${ctx.glaciers} glaciers within ~30 km but no glacial lakes are mapped. Mark or upload lakes to assess GLOF.`
+    : 'No glaciers or glacial lakes within ~30 km: not applicable.';
+  else if (has('glof') && !P.glofIdx) {
+    notes.glof = `${ctx.lakes.length} glacial lake(s) found, but none drains through this area: not applicable. See the traced paths on the map.`;
+  }
   let maxElev = -Infinity;
   for (const t of dem.tiles) if (t) for (let i = 0; i < t.length; i += 97) if (t[i] > maxElev) maxElev = t[i];
   if (has('avalanche') && maxElev < P.snowLine) notes.avalanche = `No terrain above the snow line (${P.snowLine} m) nearby: not applicable.`;
@@ -231,7 +236,6 @@ export function scoreHazards(ds, dem, ctx, P) {
     }
   }
   if (has('coastal') && !coastSegs) notes.coastal = ctx.errors.coastal ? `Coastline unavailable (${ctx.errors.coastal}).` : 'No coastline within ~10 km: not applicable.';
-  const lakes = ctx.lakes.map((l) => ({ ...l, xy: ds.proj.toXY(l.lon, l.lat) }));
   const eqScore = ctx.quakes?.score ?? 0;
 
   for (const p of ds.points) {
@@ -306,18 +310,9 @@ export function scoreHazards(ds, dem, ctx, P) {
       hz.coastal = best <= R ? scale(P.coastLevel - elev, 0, 2) : 0;
     }
 
-    if (has('glof') && lakes.length) {
-      const valley = 1 - scale(handAll, 5, 20);
-      let s = 0;
-      if (valley > 0) {
-        for (const l of lakes) {
-          const dist = Math.hypot(l.xy[0] - p.x, l.xy[1] - p.y);
-          if (dist > 30000 || l.elev - elev < 100) continue;
-          const v = valley * (1 - scale(dist, 5000, 30000)) * (0.4 + 0.6 * scale(l.area, 2e4, 5e5));
-          if (v > s) s = v;
-        }
-      }
-      hz.glof = s;
+    if (has('glof') && P.glofIdx) {
+      // Only lakes whose traced outflow passes through the area (see glof.js).
+      hz.glof = glofScore(p, ds, dem, P.glofIdx, P.glof ?? GLOF_DEFAULTS);
     }
 
     if (has('avalanche') && !notes.avalanche) {
