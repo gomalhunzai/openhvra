@@ -18,7 +18,7 @@ body:
     attributes:
       label: Area
       description: Place name, or a link to the map view, or the bounding box. Say if you uploaded a boundary file.
-      placeholder: Karimabad, Hunza, Pakistan
+      placeholder: Town or district, country
     validations:
       required: true
   - type: dropdown
