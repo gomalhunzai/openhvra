@@ -8,6 +8,13 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.11.2] – 2026-11-05
+
+No method changes: results are identical to 0.11.1.
+
+### Changed
+- **Faster, more reliable OpenStreetMap downloads.** Previously the app waited up to 120 seconds on an unresponsive Overpass server before trying the next, so a load could take about 3 minutes when a server was overloaded. Now each request starts on the server that has worked best recently (remembered in the browser), asks the next server as well if there is no answer within 30 seconds or straight away if one fails, and uses the first complete answer, cancelling the rest. When a server reports it is busy, the app reads when the next free slot is and waits that long before retrying. In tests on two 21 km² areas, loading took 38–39 s instead of 167–176 s.
+
 ## [0.11.1] – 2026-11-05
 
 No method changes: results are identical to 0.11.0.

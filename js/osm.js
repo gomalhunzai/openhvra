@@ -2,6 +2,7 @@
 
 import { lonLatArea } from './spatial.js';
 
+// Public Overpass servers, in the default order to try (see rankEndpoints).
 export const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
@@ -141,58 +142,177 @@ function wait(ms, signal) {
   });
 }
 
-// Run one Overpass query, trying each mirror in turn (starting at `start`).
-// When every mirror is busy, back off exponentially (5 s, 10 s, 20 s) as the
-// Overpass servers ask clients to.
-export async function runQuery(query, { signal, start = 0, onStatus } = {}) {
+// ---- Choosing a server ----------------------------------------------------------------
+// The public Overpass servers are free and shared, and their speed changes from
+// hour to hour. Each query starts on the server that has worked best recently;
+// if it hasn't answered after HEDGE_MS, the next server is asked as well, and
+// the first complete answer wins (the others are cancelled). A server that
+// fails moves to the back of the list for a while.
+
+export const HEDGE_MS = 30000; // ask the next server if no answer after this long
+const ATTEMPT_MS = 180000; // give up on one server after this long (matches [timeout:180])
+const STATS_KEY = 'openhvra-overpass-stats';
+const PENALTY_MS = 10 * 60 * 1000; // how long a failure counts against a server
+
+function loadStats() {
+  try {
+    return JSON.parse(globalThis.localStorage?.getItem(STATS_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveStats(stats) {
+  try {
+    globalThis.localStorage?.setItem(STATS_KEY, JSON.stringify(stats));
+  } catch {
+    /* best-effort */
+  }
+}
+
+// Record how a server did: success time (smoothed) or the time of a failure.
+export function recordResult(stats, host, ok, ms, now = Date.now()) {
+  const s = (stats[host] ??= {});
+  if (ok) {
+    s.ms = s.ms ? Math.round(0.6 * s.ms + 0.4 * ms) : Math.round(ms);
+    s.failedAt = 0;
+  } else s.failedAt = now;
+  return stats;
+}
+
+// Servers in the order to try: recently failed ones last, then fastest first;
+// unknown servers keep the list order.
+export function rankEndpoints(endpoints, stats, now = Date.now()) {
+  const score = (url, i) => {
+    const s = stats[new URL(url).host];
+    const failed = s?.failedAt && now - s.failedAt < PENALTY_MS ? 1 : 0;
+    return [failed, s?.ms ?? 1e9, i];
+  };
+  return endpoints
+    .map((url, i) => ({ url, k: score(url, i) }))
+    .sort((a, b) => a.k[0] - b.k[0] || a.k[1] - b.k[1] || a.k[2] - b.k[2])
+    .map((x) => x.url);
+}
+
+// When a server refuses with "too many requests", its status page says when
+// this connection's next slot is free (Overpass software only).
+async function slotWait(url, fetchImpl) {
+  try {
+    const res = await fetchImpl(url.replace(/interpreter$/, 'status'), { signal: AbortSignal.timeout(5000) });
+    const text = await res.text();
+    if (/\d+ slots? available now/.test(text)) return 0;
+    const m = [...text.matchAll(/in (-?\d+) seconds/g)].map((x) => +x[1]);
+    return m.length ? Math.max(0, Math.min(...m)) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Run one query against several servers, starting the next one after
+// `hedgeMs` without an answer or as soon as one fails. Resolves with the
+// first complete answer and cancels the rest.
+export function raceServers(query, endpoints, { signal, onStatus, fetchImpl = fetch, hedgeMs = HEDGE_MS, attemptMs = ATTEMPT_MS, stats = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const queue = [...endpoints];
+    const running = new Map(); // host → AbortController
+    const errors = [];
+    let waitSecs = null;
+    let done = false;
+    let hedgeTimer = null;
+    const hosts = () => [...running.keys()].join(' and ');
+    const finish = (fn, value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(hedgeTimer);
+      for (const c of running.values()) c.abort();
+      fn(value);
+    };
+    const armHedge = () => {
+      clearTimeout(hedgeTimer);
+      if (queue.length) hedgeTimer = setTimeout(launch, hedgeMs);
+    };
+    signal?.addEventListener('abort', () => finish(reject, signal.reason), { once: true });
+
+    function launch() {
+      if (done) return;
+      const url = queue.shift();
+      if (!url) {
+        if (!running.size) finish(reject, Object.assign(new Error(errors.join('; ') || 'no servers'), { waitSecs }));
+        return;
+      }
+      const host = new URL(url).host;
+      const ctrl = new AbortController();
+      running.set(host, ctrl);
+      onStatus?.({ host: hosts(), bytes: 0 });
+      armHedge();
+      const t0 = Date.now();
+      const sig = AbortSignal.any([ctrl.signal, AbortSignal.timeout(attemptMs)]);
+      (async () => {
+        const res = await fetchImpl(url, {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(query),
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: sig,
+        });
+        if (res.status === 429) {
+          const w = await slotWait(url, fetchImpl);
+          if (w != null) waitSecs = Math.min(waitSecs ?? Infinity, w);
+          throw new Error(`busy${w ? ` (next free slot in ${w} s)` : ''}`);
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await readJSON(res, (bytes) => !done && onStatus?.({ host, bytes }));
+        if (json.remark && /runtime error|timed out|out of memory/i.test(json.remark)) throw new Error(json.remark.trim().slice(0, 120));
+        return json.elements ?? [];
+      })().then(
+        (elements) => {
+          recordResult(stats, host, true, Date.now() - t0);
+          running.delete(host);
+          finish(resolve, elements);
+        },
+        (err) => {
+          running.delete(host);
+          if (done) return;
+          recordResult(stats, host, false, 0);
+          errors.push(`${host}: ${err.name === 'TimeoutError' ? 'no answer' : err.message}`);
+          if (queue.length) launch(); // try the next server straight away
+          else if (!running.size) finish(reject, Object.assign(new Error(errors.join('; ')), { waitSecs }));
+          else onStatus?.({ host: hosts(), bytes: 0 });
+        },
+      );
+    }
+    launch();
+  });
+}
+
+// Run one Overpass query: from the browser cache if possible, otherwise race
+// the servers. If every server fails, wait (as long as the busiest server asks,
+// or 5 s then 10 s) and try once or twice more.
+export async function runQuery(query, { signal, onStatus, fetchImpl, hedgeMs, attemptMs } = {}) {
   const cached = await cacheGet(query);
   if (cached) {
     onStatus?.({ cached: true, bytes: 0 });
     return cached;
   }
-  let errors = [];
-  for (let round = 0; round < 4; round++) {
+  const stats = loadStats();
+  let last;
+  for (let round = 0; round < 3; round++) {
     if (round) {
-      const secs = 5 * 2 ** (round - 1);
+      const secs = Math.min(60, Math.max(5 * round, last?.waitSecs ?? 0));
       onStatus?.({ retryIn: secs, bytes: 0 });
       await wait(secs * 1000, signal);
-      errors = [];
     }
     try {
-      return await tryMirrors(query, { signal, start, onStatus, errors });
-    } catch (err) {
-      if (signal?.aborted) throw err;
-    }
-  }
-  throw new Error(`all Overpass servers are busy or failing (${errors.join('; ')})`);
-}
-
-async function tryMirrors(query, { signal, start, onStatus, errors }) {
-  for (let i = 0; i < OVERPASS_ENDPOINTS.length; i++) {
-    const url = OVERPASS_ENDPOINTS[(start + i) % OVERPASS_ENDPOINTS.length];
-    const host = new URL(url).host;
-    onStatus?.({ host, bytes: 0 });
-    // Give each mirror a fair window, then fall through to the next one.
-    const perTry = AbortSignal.timeout(120000);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        signal: signal ? AbortSignal.any([signal, perTry]) : perTry,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await readJSON(res, (bytes) => onStatus?.({ host, bytes }));
-      if (json.remark && /runtime error|timed out|out of memory/i.test(json.remark)) throw new Error(json.remark);
-      const elements = json.elements ?? [];
+      const elements = await raceServers(query, rankEndpoints(OVERPASS_ENDPOINTS, stats), { signal, onStatus, fetchImpl, hedgeMs, attemptMs, stats });
+      saveStats(stats);
       cachePut(query, elements);
       return elements;
     } catch (err) {
+      saveStats(stats);
       if (signal?.aborted) throw err;
-      errors.push(`${host}: ${err.name === 'TimeoutError' ? 'timed out' : err.message}`);
+      last = err;
     }
   }
-  throw new Error('all mirrors failed');
+  throw new Error(`all Overpass servers are busy or failing (${last?.message ?? 'unknown error'})`);
 }
 
 // Download everything requested for a bbox. `opts.buildings` is
@@ -200,10 +320,10 @@ async function tryMirrors(query, { signal, start, onStatus, errors }) {
 export async function loadOSM(bbox, opts, { signal, onProgress } = {}) {
   const jobs = [];
   if (opts.buildings !== 'none') {
-    jobs.push(runQuery(buildingsQuery(bbox, opts.buildings === 'light'), { signal, start: 0, onStatus: (s) => onProgress?.('buildings', s) }));
+    jobs.push(runQuery(buildingsQuery(bbox, opts.buildings === 'light'), { signal, onStatus: (s) => onProgress?.('buildings', s) }));
   }
   if (opts.roads || opts.paths || opts.waterways || opts.facilities) {
-    jobs.push(runQuery(networkQuery(bbox, opts), { signal, start: 1, onStatus: (s) => onProgress?.('network', s) }));
+    jobs.push(runQuery(networkQuery(bbox, opts), { signal, onStatus: (s) => onProgress?.('network', s) }));
   }
   const parts = await Promise.all(jobs);
   return parseOSM(parts.flat());
