@@ -1,0 +1,28 @@
+name: Idea or improvement
+description: Suggest a new feature, data source or change to a method.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What would you like OpenHVRA to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: Who would use it, and for what? For a method change, include references if you have them.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: Possible approach
+      description: Optional. Data sources (with licence), methods or examples elsewhere.
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Optional. How would we know it's finished?

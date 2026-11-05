@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How to use OpenHVRA
+    url: https://github.com/gomalhunzai/openhvra#readme
+    about: The README explains each step, the methods and their limitations.
+  - name: Problems with OpenStreetMap data
+    url: https://www.openstreetmap.org/fixthemap
+    about: Missing or wrong buildings, rivers or facilities can be fixed in OpenStreetMap itself.

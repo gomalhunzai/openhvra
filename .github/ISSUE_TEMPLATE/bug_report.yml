@@ -1,0 +1,62 @@
+name: Bug report
+description: Something doesn't work (an error, a button that does nothing, a broken export).
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting. The version and area make the problem possible to reproduce.
+  - type: input
+    id: version
+    attributes:
+      label: OpenHVRA version
+      description: Shown under the title (for example v0.11.0) and at the top of every export.
+      placeholder: v0.11.0
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Place name, or a link to the map view, or the bounding box. Say if you uploaded a boundary file.
+      placeholder: Karimabad, Hunza, Pakistan
+    validations:
+      required: true
+  - type: dropdown
+    id: step
+    attributes:
+      label: Step
+      options:
+        - 1 Area & data
+        - 2 Population model
+        - 3 Cursor probe
+        - 4 Exposure by distance
+        - 5 Flood risk & risk finance
+        - 6 Social vulnerability
+        - 7 Multi-hazard risk
+        - 8 Report & downloads
+        - Map, layers or 3D view
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the steps you took and any error message shown in the app.
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: Anything you changed from the defaults, or paste `parameters.csv` from the exported ZIP.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Chrome 140 on Windows 11, or Safari on iPhone
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or files
+      description: Drag in screenshots, or the exported README.txt. Don't upload anything confidential.

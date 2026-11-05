@@ -1,0 +1,70 @@
+name: Results look wrong
+description: The app runs, but the numbers or the map don't match what you know about the place. These reports help validate the methods.
+labels: [results, validation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you: comparing OpenHVRA with what really happens on the ground is how the methods get checked before version 1.0.
+        The more specific you can be about what you expected and why, the more useful the report.
+  - type: input
+    id: version
+    attributes:
+      label: OpenHVRA version
+      placeholder: v0.11.0
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      placeholder: Place name, map link or bounding box
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Which result?
+      multiple: true
+      options:
+        - Population
+        - Exposure by distance
+        - Flood depth or flooded buildings
+        - Flood losses or building costs
+        - Risk finance layers
+        - Social vulnerability
+        - River or flash flood score
+        - Landslide score
+        - Earthquake score
+        - Coastal flood score
+        - GLOF (glacial lake outburst) score
+        - Avalanche score
+        - Multi-hazard index or combined risk
+        - Risk matrix (likelihood × impact)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: got
+    attributes:
+      label: What OpenHVRA shows
+      description: The figures or map pattern you got.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and how you know
+      description: For example a past flood or landslide, an official hazard map, census figures, local construction costs or field knowledge. Links to sources help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings and exports
+      description: Anything you changed from the defaults. Attaching README.txt and parameters.csv from the exported ZIP (step 8) makes the run repeatable.
+  - type: textarea
+    id: mapping
+    attributes:
+      label: OpenStreetMap data
+      description: Is the area well mapped (buildings, storeys, rivers, facilities)? Missing data is a common reason for odd results.

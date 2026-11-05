@@ -144,6 +144,8 @@ node --test           # or: npm test   (Node 20 or newer, nothing to install)
 
 The tests in `tests/` check the core calculations (damage curves, losses, average annual loss, risk-finance layers, multi-hazard index, risk matrix, social vulnerability classes and geometry) against hand-worked values. Run them before a release: a patch release must leave every result unchanged.
 
+To report a problem, a result that looks wrong, or an idea, or to contribute code, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Deploy for free
 
 The app is plain static files, so you can host it on GitHub Pages (*Settings → Pages → Deploy from branch*), Netlify or Cloudflare Pages.
