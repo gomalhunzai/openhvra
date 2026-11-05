@@ -8,7 +8,7 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.11.0 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.11.1 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
 
@@ -29,7 +29,7 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    - The libraries that read these formats only download the first time you upload that type of file.
    - Pick which layers to download. **Light** mode (the default) downloads building bounding boxes instead of full footprints, which is about 3× smaller, and estimates each building's area from its box. Facilities are downloaded as centre points only.
    - Buildings and the remaining layers download in parallel, falling back across public Overpass servers. Downloads are cached in the browser for 3 days, so reloading the same area is instant.
-2. **Population model**: estimates residents per building as residential floor area (footprint × storeys) ÷ floor area per person. Enter a census total to calibrate. Buildings are split into residential, commercial, industrial, public and ancillary classes.
+2. **Population model**: estimates residents per building as residential floor area (footprint × storeys) ÷ floor area per person. Enter a known total (census, WorldPop or GHSL) with its source and year to calibrate; the step explains where to find one. Buildings are split into residential, commercial, industrial, public and ancillary classes.
 3. **Cursor probe**: a circle (25–1000 m) follows the mouse and shows live counts of residents, buildings and facilities, road and waterway length, and the distance to the nearest waterway and major road.
 4. **Exposure by distance**: counts and maps everything within *X* m of rivers, streams or roads, and lists the critical facilities at risk. For waterways, **elevation is used** (on by default): a building only counts as flood-exposed if it is also within a set height of the channel (default 5 m). Close-but-high buildings are split into **steep bank** (25° or steeper down to the water, so at risk of erosion or undercutting) and **higher ground** (not exposed). This avoids counting hillside homes in mountain valleys as flood-exposed.
 5. **Flood risk & risk finance**
@@ -173,7 +173,7 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 These are **screening estimates**, intended for prioritisation, not engineering design.
 
 - **OSM coverage varies.** Missing buildings mean missing people and losses. Check against the satellite basemap.
-- **Population** is a floor-area model. Calibrate it with a census or WorldPop total whenever you can.
+- **Population** is a floor-area model. Calibrate it with a census, WorldPop or GHSL total whenever you can. Gridded estimates can differ from each other and from the census by 20% or more in small areas, so the source and year are recorded in every export.
 - **The flood hazard is a proxy.** "Height above nearest waterway" ignores flood defences, channel capacity, backwater effects and rainfall flooding. The elevation data is about 30 m resolution with several metres of vertical error, and often includes buildings and trees. Replace the default water levels with values from local hydrology or a flood study.
 - **The multi-hazard scores are terrain and map proxies.** They don't model hazards physically: there is no flow routing for flash floods; GLOF paths are traced on ~30–60 m elevation where streams are unmapped and can go wrong in narrow gorges or flat valley floors (check them on the map and draw the path yourself if needed), no soil or rock data for landslides and earthquakes, and no snow climate for avalanches. Use them to find hotspots, then confirm with official hazard maps and field checks.
 - **The social vulnerability index uses proxies.** Where OSM is missing clinics, shelters or roads, areas look more vulnerable than they are. Vulnerable-group counts apply national shares evenly, so for local differences upload census data.

@@ -437,6 +437,8 @@ function popParams() {
     m2PerPerson: Math.max(1, +$('pop-m2').value || DEFAULT_POP.m2PerPerson),
     defaultLevels: Math.max(1, +$('pop-levels').value || 1),
     knownTotal: Math.max(0, +$('pop-known').value || 0),
+    knownSource: $('pop-known-source').value,
+    knownYear: +$('pop-known-year').value || null,
     unknownResidential: $('pop-unknown').checked,
   };
 }
@@ -453,7 +455,7 @@ function applyPopulation() {
   if (state.mh) combineMH(false);
 }
 
-for (const id of ['pop-m2', 'pop-levels', 'pop-known', 'pop-unknown']) $(id).addEventListener('change', applyPopulation);
+for (const id of ['pop-m2', 'pop-levels', 'pop-known', 'pop-unknown', 'pop-known-source', 'pop-known-year']) $(id).addEventListener('change', applyPopulation);
 
 function renderSummary() {
   const ds = state.dataset;
@@ -463,7 +465,11 @@ function renderSummary() {
       <div class="kpi"><b>${fmt(Math.round(s.pop))}</b><span>estimated residents in the area</span></div>
       <div class="kpi"><b>${fmt(s.buildings)}</b><span>buildings · ${fmt(s.facilities)} facilities</span></div>
     </div>`;
-  if (ds.popFactor !== 1) html += `<p class="note">Calibrated to your census figure: the raw estimate was multiplied by ${ds.popFactor.toFixed(2)}.</p>`;
+  if (ds.popFactor !== 1) {
+    const P = ds.popParams;
+    const src = [P.knownSource, P.knownYear].filter(Boolean).join(', ');
+    html += `<p class="note">Calibrated to your known population${src ? ` (${escapeHtml(src)})` : ''}: the raw estimate was multiplied by ${ds.popFactor.toFixed(2)}.</p>`;
+  }
   html += '<table class="list"><tr><th>Building class</th><th class="num">Count</th><th class="num">Residents</th></tr>';
   for (const [k, label] of Object.entries(BUILDING_CLASSES)) {
     const c = s.classes[k];

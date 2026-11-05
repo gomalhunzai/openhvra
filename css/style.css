@@ -321,3 +321,10 @@ table.calc th { white-space: normal; vertical-align: bottom; }
 }
 .threed-panel[hidden] { display: none; }
 .threed-panel input { width: 100%; accent-color: #0b6bcb; }
+
+/* Inline help (e.g. where to find a population total) */
+details.hint { border: none; margin-top: 8px; font-size: 12px; color: var(--muted); }
+details.hint > summary { cursor: pointer; font-size: 12px; color: var(--accent); padding: 2px 0; text-transform: none; letter-spacing: 0; font-weight: 500; display: list-item; }
+details.hint > summary::after { content: none; }
+details.hint ul { margin: 4px 0; padding-left: 18px; }
+details.hint li, details.hint p { margin: 4px 0; line-height: 1.45; }

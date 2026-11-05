@@ -8,6 +8,15 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.11.1] – 2026-11-05
+
+No method changes: results are identical to 0.11.0.
+
+### Added
+- **Source and year of the known population** in step 2 (census, WorldPop, GHSL, local survey or other), recorded in `parameters.csv`, the summary and the calibration note ([#8](https://github.com/gomalhunzai/openhvra/issues/8)).
+- **"Where to find a population total"** guide in step 2: national census, WorldPop Global2 (2015–2030) and GHSL GHS-POP, with how to sum a gridded estimate inside the area in QGIS. An automatic WorldPop lookup was not added: WorldPop's statistics service only covers 2000–2020 and, like its newer files, cannot be read from a web page (no CORS).
+- The full package now always includes `layers/area.geojson`; when the map view was used as the area, it is the view's rectangle.
+
 ## [0.11.0] – 2026-11-05
 
 ### Method change: building costs (flood losses differ from 0.10.x)

@@ -109,6 +109,10 @@ function parameterRows(S) {
   add('2 Population', 'storeys_if_unknown', P.defaultLevels);
   add('2 Population', 'untagged_buildings_are_homes', P.unknownResidential);
   add('2 Population', 'known_population', P.knownTotal || 'not set');
+  if (P.knownTotal) {
+    add('2 Population', 'known_population_source', P.knownSource || 'not stated');
+    add('2 Population', 'known_population_year', P.knownYear || 'not stated');
+  }
   add('2 Population', 'calibration_factor', r2(S.ds.popFactor));
   if (S.exposure) {
     add('4 Exposure', 'hazard_source', SOURCES[S.exposure.sourceKey].label);
@@ -228,7 +232,7 @@ function summaryText(S) {
   L.push(`Building detail: ${S.loadOpts?.buildings ?? 'n/a'}${S.loadOpts?.buildings === 'light' ? ' (areas estimated from bounding boxes)' : ''}.`);
 
   h('2. Population');
-  L.push(`Estimated residents: ${fmt(s.pop)} (floor area per person ${ds.popParams.m2PerPerson} m², storeys if unknown ${ds.popParams.defaultLevels}${ds.popFactor !== 1 ? `, calibrated ×${ds.popFactor.toFixed(2)}` : ''}).`);
+  L.push(`Estimated residents: ${fmt(s.pop)} (floor area per person ${ds.popParams.m2PerPerson} m², storeys if unknown ${ds.popParams.defaultLevels}${ds.popFactor !== 1 ? `, calibrated ×${ds.popFactor.toFixed(2)} to a known total of ${fmt(ds.popParams.knownTotal)}${[ds.popParams.knownSource, ds.popParams.knownYear].filter(Boolean).length ? ` (${[ds.popParams.knownSource, ds.popParams.knownYear].filter(Boolean).join(', ')})` : ''}` : ''}).`);
   for (const [k, label] of Object.entries(BUILDING_CLASSES)) if (s.classes[k]) L.push(`  ${label}: ${fmt(s.classes[k].count)} buildings, ${fmt(s.classes[k].pop)} residents`);
 
   if (S.exposure) {
@@ -454,6 +458,10 @@ export async function buildPackage(S) {
 
   // Map layers: same values as the tables.
   if (S.aoi) put('layers/area.geojson', fc([{ type: 'Feature', properties: { name: S.areaLabel }, geometry: roundGeom({ type: 'MultiPolygon', coordinates: S.aoi.polygons }) }]));
+  else {
+    const [w, s, e, n] = S.ds.bbox; // map view used as the area
+    put('layers/area.geojson', fc([{ type: 'Feature', properties: { name: S.areaLabel ?? 'Map view' }, geometry: roundGeom({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }) }]));
+  }
   put('layers/buildings.geojson', fc(ds.buildings.map((b, i) => ({ type: 'Feature', geometry: roundGeom(b.feature.geometry), properties: bRows[i] }))));
   put('layers/facilities.geojson', fc(ds.facilities.map((f, i) => ({ type: 'Feature', geometry: roundGeom(f.feature.geometry), properties: fRows[i] }))));
   const line = (l) => ({ type: 'Feature', geometry: roundGeom(l.feature.geometry), properties: { osm_id: l.osm_id, type: l.type, class: l.cls, name: l.name, length_m: Math.round(l.length), bridge: l.bridge ?? null } });

@@ -88,7 +88,28 @@
           <label class="field"><span>Storeys if unknown</span><input id="pop-levels" type="number" min="1" max="50" step="1" value="1"></label>
           <label class="field"><span>Known population (optional)</span><input id="pop-known" type="number" min="0" step="1" placeholder="e.g. 45000"></label>
           <label class="field check"><input id="pop-unknown" type="checkbox" checked><span>Count untagged buildings as homes</span></label>
+          <label class="field"><span>Source of the figure</span>
+            <select id="pop-known-source">
+              <option value="">Not stated</option>
+              <option>National census</option>
+              <option>WorldPop</option>
+              <option>GHSL (GHS-POP)</option>
+              <option>Local survey or count</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label class="field"><span>Year of the figure</span><input id="pop-known-year" type="number" min="1950" max="2100" step="1" placeholder="e.g. 2023"></label>
         </div>
+        <details class="hint">
+          <summary>Where to find a population total</summary>
+          <p>The total must cover the <b>same area</b> you loaded. It is recorded with its source and year in every export.</p>
+          <ul>
+            <li><b>National census</b>: usually the best figure if it is recent. Statistics offices publish counts by district, sub-district or village (for Pakistan, the <a href="https://www.pbs.gov.pk/" target="_blank" rel="noopener">Pakistan Bureau of Statistics</a> 2023 census). Add later growth if the census is old.</li>
+            <li><b>WorldPop Global2</b> (2015–2030, 100 m, CC BY 4.0): download your country's population raster for the year from the <a href="https://hub.worldpop.org/geodata/listing?id=135" target="_blank" rel="noopener">WorldPop hub</a>, then sum it inside your area in QGIS (<i>Processing → Zonal statistics</i>, statistic <i>Sum</i>).</li>
+            <li><b>GHSL GHS-POP</b> (European Commission, 1975–2030, 100 m, CC BY 4.0): download from the <a href="https://human-settlement.emergency.copernicus.eu/download.php?ds=pop" target="_blank" rel="noopener">GHSL site</a> and sum it the same way.</li>
+          </ul>
+          <p>Your area's outline for QGIS is in the full package (step 8) as <code>layers/area.geojson</code>. Gridded estimates can differ from each other and from the census by 20% or more in small areas, so note which one you used.</p>
+        </details>
         <div id="area-summary" class="stats"></div>
       </div>
     </details>
