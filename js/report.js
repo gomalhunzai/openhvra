@@ -58,7 +58,10 @@ export function featureRow(p, S, exp = exposureIndex(S)) {
   if (S.risk) {
     row.flood_height_above_river_m = r1(p.hand);
     row.flood_river_distance_m = p.riverDist != null ? Math.round(p.riverDist) : null;
-    if (p.kind === 'building') row.flood_value = Math.round(p.value ?? 0);
+    if (p.kind === 'building') {
+      row.flood_value = Math.round(p.value ?? 0);
+      row.flood_construction_type = p.ctype ?? null;
+    }
     S.risk.scenarios.forEach((s, i) => {
       row[`flood_depth_${s.rp}yr_m`] = p.depths ? r2(p.depths[i]) : null;
       if (p.kind === 'building') row[`flood_loss_${s.rp}yr`] = p.losses ? Math.round(p.losses[i]) : 0;
@@ -119,7 +122,11 @@ function parameterRows(S) {
     add('5 Flood risk', 'max_distance_m', R.maxDist);
     for (const s of S.risk.scenarios) add('5 Flood risk', `water_level_${s.rp}yr_m`, s.level);
     for (const [k, v] of Object.entries(R.costs)) add('5 Flood risk', `cost_per_m2_${k}`, `${v} ${R.currency}`);
-    add('5 Flood risk', 'contents_pct_of_structure', R.contentsPct);
+    if (typeof R.contentsPct === 'object') for (const [k, v] of Object.entries(R.contentsPct)) add('5 Flood risk', `contents_pct_of_building_${k}`, v);
+    else add('5 Flood risk', 'contents_pct_of_structure', R.contentsPct);
+    if (R.costSource) add('5 Flood risk', 'cost_source', R.costSource);
+    for (const [k, v] of Object.entries(R.typeFactors ?? {})) add('5 Flood risk', `cost_factor_construction_${k}`, v);
+    if (R.costCitation) add('5 Flood risk', 'cost_source_citation', R.costCitation);
     for (const [k, v] of Object.entries(S.finance)) add('5 Risk finance', k, v);
   }
   if (S.svi) {
@@ -239,6 +246,7 @@ function summaryText(S) {
     const R = S.risk;
     const cur = R.params.currency;
     h('5. Flood risk & risk finance');
+    if (R.params.costSource) L.push(`Building costs: ${R.params.costSource}.`);
     L.push(`Total building value: ${cur} ${fmt(R.totalValue)}. Average annual loss: ${cur} ${fmt(R.aal)} (${((100 * R.aal) / (R.totalValue || 1)).toFixed(2)}%). People affected per year: ${fmt(R.annualPop)}.`);
     for (const sc of R.scenarios) L.push(`  ${sc.rp}-yr (${sc.level} m): ${fmt(sc.buildings)} buildings, ${fmt(sc.pop)} people, ${sc.facilities.length} critical facilities, loss ${cur} ${fmt(sc.loss)}`);
     for (const l of S.layers) L.push(`  ${l.name} (${l.rp}, ${l.instrument}): expected ${cur} ${fmt(l.eal)}/yr, cost ${l.cost == null ? '—' : `${cur} ${fmt(l.cost)}/yr`}`);
@@ -281,9 +289,11 @@ function summaryText(S) {
   h('Important');
   L.push('These are screening estimates from open data (OpenStreetMap, ~30 m elevation, USGS, World Bank).');
   L.push('They show where to look first; confirm with official hazard maps, local data and field checks.');
-  L.push('Default values (water levels, costs, shares) are placeholders unless you changed them: see parameters.csv.');
+  L.push('Default water levels and population shares are placeholders unless you changed them: see parameters.csv.');
+  L.push('Building costs come from an open global model (see step 5) unless you entered your own: local costs are better.');
   h('Credits');
   L.push('Data © OpenStreetMap contributors (ODbL), Overpass API, AWS Terrain Tiles, USGS, World Bank, Nominatim.');
+  if (S.risk?.params.costCitation) L.push(`Building costs: ${S.risk.params.costCitation}`);
   L.push('OpenHVRA by Gomal Amin — https://www.openstreetmap.org/user/Gomal%20Amin');
   return L.join('\n');
 }

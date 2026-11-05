@@ -8,6 +8,16 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.11.0] – 2026-11-05
+
+### Method change: building costs (flood losses differ from 0.10.x)
+- **Building costs are now set for your area instead of one global placeholder** (previously 250 per m² for homes, labelled US dollars, with 30% contents, for every country). Including contents, that single value was about 3 times too high in some of the poorest countries (for example Afghanistan and Bhutan) and 7–10 times too low in Western Europe and North America. Choose the source in step 5:
+  - **GEM Global Exposure Model 2026** (default): replacement cost per m² for the country and, where available, the province or state (215 countries, 3,557 regions), by residential, commercial and industrial use, with GEM's contents values. Homes with a mapped `building:material` are adjusted by GEM's cost for that construction type (earth/adobe/stone, brick or block, reinforced masonry, concrete, steel, wood). Data licence CC BY-NC-SA 4.0.
+  - **JRC formula with the latest World Bank GDP per capita**: the JRC flood damage study's construction-cost regressions (Huizinga et al. 2017), applied to current GDP per capita and brought to current US dollars; contents 50/100/150% as in that study.
+  - **Your own values**, in any currency.
+- **Contents are set per building class** instead of one percentage.
+- Every export records the cost source, region, construction-type factors and citation; `buildings.csv` adds each building's construction type.
+
 ## [0.10.2] – 2026-11-05
 
 No method changes: results are identical to 0.10.1.

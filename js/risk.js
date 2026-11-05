@@ -15,6 +15,7 @@
 
 import { SOURCES } from './analysis.js';
 import { CRITICAL_GROUPS } from './osm.js';
+import { constructionType } from './costs.js';
 
 const TERRARIUM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';
 
@@ -165,7 +166,8 @@ export function damageFraction(curve, depth) {
   return curve[curve.length - 1];
 }
 
-// ---- Defaults (placeholders: replace with local hydrology and construction costs) ----
+// ---- Defaults (placeholders: replace with local hydrology; costs are normally
+// filled for the area from GEM or the JRC formula, see costs.js) ----
 
 export const DEFAULT_SCENARIOS = [
   { rp: 5, level: 1 },
@@ -175,7 +177,8 @@ export const DEFAULT_SCENARIOS = [
   { rp: 100, level: 3 },
   { rp: 500, level: 4 },
 ];
-// Replacement cost per m² of floor area.
+// Replacement cost per m² of floor area (US$), used only until costs for the
+// area are looked up, or if the lookup fails.
 export const DEFAULT_COSTS = { residential: 250, commercial: 400, industrial: 300, public: 450, ancillary: 100, unknown: 250 };
 export const DEFAULT_FINANCE = { retentionRP: 10, creditRP: 25, transferRP: 100, transferMultiple: 2, creditFeePct: 0.5 };
 
@@ -194,13 +197,24 @@ export function expectedAnnual(points) {
   return last ? s + last.v / last.rp : 0;
 }
 
+// Replacement cost per m² of floor area for one building, including contents.
+// P.contentsPct is one % for all classes or { cls: % }. For residential and
+// untagged buildings with a known construction type, P.typeFactors (cost of
+// that type relative to the average home, from GEM) adjusts the cost.
+export function unitValue(p, P) {
+  const contents = typeof P.contentsPct === 'object' ? P.contentsPct[p.cls] ?? 0 : P.contentsPct;
+  const f = (p.cls === 'residential' || p.cls === 'unknown') && p.ctype ? P.typeFactors?.[p.ctype] ?? 1 : 1;
+  return P.costs[p.cls] * f * (1 + contents / 100);
+}
+
 export function floodLoss(p, depth, P) {
   const df = damageFraction(DAMAGE_CURVES[CURVE_FOR[p.cls]], depth);
   const floorsHit = Math.min(p.floors, Math.max(1, Math.ceil(depth / 3)));
-  return P.costs[p.cls] * p.footprint * floorsHit * (1 + P.contentsPct / 100) * df;
+  return unitValue(p, P) * p.footprint * floorsHit * df;
 }
 
-// P: { source, maxDist, scenarios: [{rp, level}], costs: {cls: perM2}, contentsPct }
+// P: { source, maxDist, scenarios: [{rp, level}], costs: {cls: perM2},
+//      contentsPct: number or {cls: %}, typeFactors: {type: factor} }
 export function floodRisk(ds, dem, P) {
   const pred = SOURCES[P.source].pred;
   const sc = P.scenarios.filter((s) => s.rp > 1 && s.level > 0).sort((a, b) => a.rp - b.rp);
@@ -214,7 +228,8 @@ export function floodRisk(ds, dem, P) {
     p.depths = null;
     p.losses = null;
     if (p.kind === 'building') {
-      p.value = P.costs[p.cls] * p.footprint * p.floors * (1 + P.contentsPct / 100);
+      p.ctype = constructionType(p.material);
+      p.value = unitValue(p, P) * p.footprint * p.floors;
       totalValue += p.value;
       p.slope = dem.slopeDeg(lon, lat);
       if (p.slope >= 25) {

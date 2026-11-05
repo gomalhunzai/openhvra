@@ -8,7 +8,7 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.10.2 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.11.0 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
 
@@ -35,6 +35,12 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
 5. **Flood risk & risk finance**
    - **Hazard**: estimates flood depth at each building from its *height above the nearest waterway*, using open elevation data. You enter the water level for each return period, for example the 5-, 10-, 25-, 50-, 100- and 500-year floods.
    - **Vulnerability**: depth-damage curves for residential, commercial and industrial buildings (approximately the JRC global curves for Asia, Huizinga et al. 2017), applied to replacement cost per m² plus contents.
+   - **Building costs**: filled in for the country and, where available, the province or state of your area. You choose the source:
+     - **GEM Global Exposure Model 2026** (default; Yepes-Estrada et al. 2023): modelled replacement cost per m² of floor area for 215 countries and 3,557 regions, by residential, commercial and industrial use, with contents. Homes with a mapped `building:material` (earth/adobe/stone, brick or block, reinforced masonry, concrete, steel, wood) are adjusted by GEM's national cost for that construction type.
+     - **JRC formula with the latest World Bank GDP per capita**: the construction-cost regressions of the JRC flood damage study (Huizinga et al. 2017, cost = a × GDP per capita^b, fitted on 2010 prices), applied to the most recent GDP per capita and brought to current US dollars with the US consumer price index. Contents are 50% (homes), 100% (commercial) and 150% (industrial) of the building, as in the JRC study.
+     - **Your own values**, in any currency.
+
+     Both sources give undepreciated replacement costs in US dollars. Sheds and garages are costed at 40% of a home, public buildings like commercial ones. The source is recorded in every export.
    - **Risk metrics**: for each scenario, the loss, people affected and critical facilities flooded. Also a **loss-exceedance curve**, the **average annual loss (AAL)**, the expected number of people affected per year, and a landslide screen based on slope.
    - **Risk finance**: splits the loss curve into layers: *retain* (reserve fund), *borrow* (contingent credit), *transfer* (parametric insurance or cat bond) and *residual*. Each layer shows its expected annual loss and an indicative annual cost.
 6. **Social vulnerability**
@@ -149,6 +155,8 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 | `js/osm.js` | Overpass queries (light and footprint modes), parallel download with fallback, IndexedDB cache, parsing and classification |
 | `js/analysis.js` | `Dataset`: area clipping, population model, cursor probe, distance exposure |
 | `js/risk.js` | Elevation tiles, flood-depth model, depth-damage curves, AAL and risk-finance layers |
+| `js/costs.js` | Building replacement costs: GEM lookup by country and region, JRC formula with World Bank data, construction types |
+| `data/gem-costs.json` | GEM costs by country, region and construction type (built by `scripts/build-gem-costs.mjs`; CC BY-NC-SA 4.0) |
 | `js/spatial.js` | Projection, grid index, distance and geometry helpers |
 | `js/hazards.js` | Multi-hazard scoring, USGS and glacier/coast context data, multi-hazard index, combined risk, risk matrix |
 | `js/social.js` | Social Vulnerability Index, census join, World Bank demographic shares |
@@ -167,7 +175,8 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 - **The flood hazard is a proxy.** "Height above nearest waterway" ignores flood defences, channel capacity, backwater effects and rainfall flooding. The elevation data is about 30 m resolution with several metres of vertical error, and often includes buildings and trees. Replace the default water levels with values from local hydrology or a flood study.
 - **The multi-hazard scores are terrain and map proxies.** They don't model hazards physically: there is no flow routing for flash floods; GLOF paths are traced on ~30–60 m elevation where streams are unmapped and can go wrong in narrow gorges or flat valley floors (check them on the map and draw the path yourself if needed), no soil or rock data for landslides and earthquakes, and no snow climate for avalanches. Use them to find hotspots, then confirm with official hazard maps and field checks.
 - **The social vulnerability index uses proxies.** Where OSM is missing clinics, shelters or roads, areas look more vulnerable than they are. Vulnerable-group counts apply national shares evenly, so for local differences upload census data.
-- **The damage curves and costs are defaults.** Use national replacement costs, for example from the JRC or national statistics.
+- **Building costs are modelled national or regional averages.** GEM's values are themselves model estimates, and the JRC formula rests on construction-cost surveys from around 2010. Neither knows your town: use local construction costs where you have them. Costs in poor and informal areas can be far lower than the average (the JRC study reports informal homes worth about 8 times less, and mud homes about 5 times less than brick), so a low monetary loss does not mean a low impact: look at people affected and loss as a share of value too.
+- **The damage curves are global averages** (JRC curves for Asia). Earthen and informal homes are often destroyed by about 1 m of water, sooner than these curves assume.
 - **AAL** comes from a handful of scenarios: no damage is assumed below the most frequent one, and the rarest one's loss is assumed for anything rarer.
 - **Risk-finance costs** (premium multiples, credit fees) are indicative. Real pricing depends on markets and on basis risk.
 - Please respect the usage policies of [Overpass](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html), [OSM tiles](https://operations.osmfoundation.org/policies/tiles/), [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) and [OpenTopoMap](https://opentopomap.org/about). For heavy use, self-host or use commercial providers.
@@ -181,5 +190,7 @@ Data © OpenStreetMap contributors (ODbL). Elevation: [AWS Terrain Tiles](https:
 The OpenHVRA code is released under the [MIT License](LICENSE): you may use, copy, modify and share it freely, including in other projects, as long as the copyright and license notice are kept.
 
 Data used and produced by the app keep their own licenses. OpenStreetMap data is © OpenStreetMap contributors under the [ODbL](https://www.openstreetmap.org/copyright), which also applies to outputs derived from it (exported tables, layers and maps): credit OpenStreetMap when you share them.
+
+The building cost table in `data/gem-costs.json` is derived from the [GEM Global Exposure Model](https://github.com/gem/global_exposure_model) v2026.0.0 (Yepes-Estrada et al. 2023, [doi:10.1177/87552930231194048](https://doi.org/10.1177/87552930231194048)), compiled by the [UCC Database](https://github.com/aaronopdyke/ucc-database), and is licensed **CC BY-NC-SA 4.0**: it may be used and shared for non-commercial purposes with credit, under the same licence. Commercial users should choose the JRC option or their own costs.
 
 Bundled third-party files keep their own licenses: [MapLibre GL JS](https://maplibre.org) 4.7.1 in `vendor/` (BSD-3-Clause, see `vendor/maplibre-gl-4.7.1/LICENSE.txt`) and the [Inter](https://rsms.me/inter/) font in `assets/fonts/` (SIL Open Font License 1.1, see `assets/fonts/LICENSE-Inter.txt`).

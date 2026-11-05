@@ -3,6 +3,7 @@ import { Dataset, SOURCES, DEFAULT_POP } from './analysis.js';
 import { circlePolygon, ringBBox, lonLatArea, bboxAreaKm2, makeProjection } from './spatial.js';
 import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, DEFAULT_COSTS, DEFAULT_FINANCE } from './risk.js';
 import { DrawTool } from './draw.js';
+import { CONSTRUCTION_TYPES, costsFor } from './costs.js';
 import { DrawControl, LayerControl, ThreeDControl } from './controls.js';
 import { lossCurve } from './chart.js';
 import { VERSION, REPO } from './version.js';
@@ -405,6 +406,8 @@ async function loadData() {
     $('wb-fetch').disabled = false;
     $('run').disabled = false;
     $('run-risk').disabled = false;
+    $('cost-fetch').disabled = $('cost-source').value === 'own';
+    fillCosts();
     applyPopulation();
     updateReportChecklist();
     refresh3D();
@@ -697,8 +700,72 @@ $('clear').addEventListener('click', clearExposure);
 $('scenario-table').tBodies[0].innerHTML = DEFAULT_SCENARIOS.map((s) => `<tr>
   <td><input type="number" class="sc-rp" min="2" max="10000" step="1" value="${s.rp}" aria-label="Return period in years"></td>
   <td><input type="number" class="sc-level" min="0" max="30" step="0.1" value="${s.level}" aria-label="Water level in metres"></td></tr>`).join('');
-$('cost-inputs').innerHTML = Object.entries(DEFAULT_COSTS).map(([k, v]) =>
-  `<label class="field"><span>${BUILDING_CLASSES[k].split(/[ (]/)[0]}</span><input type="number" id="cost-${k}" min="0" step="10" value="${v}"></label>`).join('');
+$('cost-table').tBodies[0].innerHTML = Object.entries(DEFAULT_COSTS).map(([k, v]) => `<tr>
+  <td>${escapeHtml(BUILDING_CLASSES[k])}</td>
+  <td><input type="number" id="cost-${k}" class="cost-in" min="0" step="10" value="${v}" aria-label="${escapeHtml(BUILDING_CLASSES[k])}: cost per m²"></td>
+  <td><input type="number" id="contents-${k}" class="cost-in" min="0" max="300" step="5" value="30" aria-label="${escapeHtml(BUILDING_CLASSES[k])}: contents as % of building"></td></tr>`).join('');
+
+// Where the costs in the table came from; `edited` is set when the user changes a value.
+state.costInfo = { source: 'placeholder', label: 'Placeholder values (costs not looked up)', edited: false, typeFactors: {} };
+
+function costSourceText(c) {
+  if (c.source === 'gem') return `GEM Global Exposure Model v2026.0.0, ${c.region ? `${c.region}, ${c.country}` : c.country}`;
+  if (c.source === 'jrc') return `JRC construction-cost formula (Huizinga et al. 2017) with the World Bank GDP per capita of ${c.country} for ${c.year} (US$ ${fmt(Math.round(c.gdpPc))}), at ${c.priceYear} US prices`;
+  return c.label;
+}
+
+function showCostTypes() {
+  const tf = state.costInfo.typeFactors ?? {};
+  const keys = Object.keys(tf);
+  $('cost-types').innerHTML = keys.length
+    ? `Homes with a mapped building material are adjusted by GEM's national cost for that construction type: ${keys.map((k) => `${CONSTRUCTION_TYPES[k].toLowerCase()} ×${tf[k].toFixed(2)}`).join(', ')}.`
+    : '';
+}
+
+async function fillCosts() {
+  const ds = state.dataset;
+  const source = $('cost-source').value;
+  if (!ds || source === 'own') return;
+  const [w, s, e, n] = ds.bbox;
+  $('cost-fetch').disabled = true;
+  $('cost-status').textContent = 'Looking up building costs for this area…';
+  try {
+    const c = await costsFor(source, (w + e) / 2, (s + n) / 2, AbortSignal.timeout(20000));
+    if (state.dataset !== ds || $('cost-source').value !== source) return; // superseded by a newer request
+    for (const k of Object.keys(DEFAULT_COSTS)) {
+      $(`cost-${k}`).value = c.costs[k];
+      $(`contents-${k}`).value = c.contentsPct[k];
+    }
+    $('currency').value = 'USD';
+    state.costInfo = { ...c, label: costSourceText(c), edited: false };
+    $('cost-status').innerHTML = `Costs from the ${escapeHtml(costSourceText(c))}: replacement cost in US dollars (not depreciated).` +
+      (c.source === 'gem' && c.level === 'country' ? ' No regional value for this area, so national values are used.' : '') +
+      ` Edit any value to use local figures. <span class="muted">Source: ${escapeHtml(c.citation)}</span>`;
+    showCostTypes();
+    if (state.risk) clearRisk();
+  } catch (err) {
+    if (state.dataset !== ds) return;
+    $('cost-status').innerHTML = `<span class="warn">Could not look up costs (${escapeHtml(err.message)}). Enter local costs, or try again.</span>`;
+  } finally {
+    $('cost-fetch').disabled = !state.dataset || $('cost-source').value === 'own';
+  }
+}
+
+$('cost-fetch').addEventListener('click', fillCosts);
+$('cost-source').addEventListener('change', () => {
+  if ($('cost-source').value === 'own') {
+    state.costInfo = { source: 'own', label: 'Own values entered by the user', edited: true, typeFactors: {} };
+    $('cost-status').textContent = 'Enter your own cost per m² of floor area and contents share for each class, in the currency shown.';
+    $('cost-fetch').disabled = true;
+    showCostTypes();
+  } else fillCosts();
+});
+document.querySelectorAll('.cost-in').forEach((el) => el.addEventListener('change', () => { state.costInfo.edited = true; }));
+$('currency').addEventListener('change', () => {
+  if (state.costInfo.source !== 'own' && $('currency').value.trim().toUpperCase() !== 'USD') {
+    $('cost-status').innerHTML = '<span class="warn">The looked-up costs are in US dollars. Changing the currency label does not convert them: enter the costs in the new currency too.</span>';
+  }
+});
 
 function riskParams() {
   const rps = [...document.querySelectorAll('.sc-rp')].map((i) => +i.value);
@@ -711,7 +778,10 @@ function riskParams() {
     maxDist: Math.max(50, +$('risk-maxdist').value || 1000),
     scenarios,
     costs: Object.fromEntries(Object.keys(DEFAULT_COSTS).map((k) => [k, Math.max(0, +$(`cost-${k}`).value || 0)])),
-    contentsPct: Math.max(0, +$('contents').value || 0),
+    contentsPct: Object.fromEntries(Object.keys(DEFAULT_COSTS).map((k) => [k, Math.max(0, +$(`contents-${k}`).value || 0)])),
+    typeFactors: $('cost-source').value === 'own' ? {} : state.costInfo.typeFactors ?? {},
+    costSource: state.costInfo.label + (state.costInfo.edited && state.costInfo.source !== 'own' ? ' (edited by the user)' : ''),
+    costCitation: state.costInfo.citation ?? '',
     currency: $('currency').value.trim() || 'USD',
   };
 }

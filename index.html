@@ -129,7 +129,7 @@
     <details>
       <summary><span class="step">5</span> Flood risk &amp; risk finance</summary>
       <div class="body">
-        <p class="muted small">Estimates flood depth at each building from its height above the nearest waterway (open elevation data), then damage, average annual loss and a risk-financing strategy. <b>The default values are placeholders</b>: replace them with local hydrology and construction costs.</p>
+        <p class="muted small">Estimates flood depth at each building from its height above the nearest waterway (open elevation data), then damage, average annual loss and a risk-financing strategy. <b>The default water levels are placeholders</b>: replace them with local hydrology. Building costs are filled in for your area from an open global model; replace them with local construction costs if you have them.</p>
         <div class="grid2">
           <label class="field"><span>Flooding from</span>
             <select id="risk-source">
@@ -146,12 +146,24 @@
           <tbody></tbody>
         </table>
 
-        <div class="sub">Replacement cost per m² floor area</div>
-        <div class="grid3" id="cost-inputs"></div>
-        <div class="grid2 even">
-          <label class="field"><span>Contents (% of structure)</span><input id="contents" type="number" min="0" max="200" step="5" value="30"></label>
+        <div class="sub">Building replacement costs</div>
+        <div class="grid2">
+          <label class="field"><span>Cost source</span>
+            <select id="cost-source">
+              <option value="gem">GEM exposure model 2026 (recommended)</option>
+              <option value="jrc">JRC formula + World Bank GDP</option>
+              <option value="own">My own values</option>
+            </select>
+          </label>
           <label class="field"><span>Currency</span><input id="currency" type="text" value="USD" maxlength="5"></label>
         </div>
+        <button id="cost-fetch" class="btn" disabled>Fill costs for this area</button>
+        <p id="cost-status" class="note">Costs are filled in for the country and region of your area when the data loads.</p>
+        <table class="inputs" id="cost-table">
+          <thead><tr><th>Building class</th><th>Cost per m² floor area</th><th>Contents (% of building)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="cost-types" class="muted small"></p>
         <button id="run-risk" class="btn primary block" disabled>Run flood risk analysis</button>
         <p id="risk-status" class="muted small"></p>
         <div id="risk-results" class="stats"></div>
@@ -292,7 +304,7 @@
         <li><b>Load OSM data.</b> Tick the layers you need and click <i>Load OSM data</i>. It takes from 10 seconds to a couple of minutes, depending on the public servers. Loaded areas are saved in your browser for 3 days.</li>
         <li><b>Check the population model</b> (step 2). Adjust the floor area per person and the default number of storeys, or enter a census total to calibrate.</li>
         <li><b>Explore.</b> Move the mouse over the map to see live counts within the chosen radius, and click to pin the circle. Step 4 counts everything within a set distance of rivers or roads. For rivers, it also uses elevation to leave out buildings well above the water and to flag buildings on steep, erodible banks.</li>
-        <li><b>Flood risk and risk finance</b> (step 5). Enter the water level for each return period and the local construction costs, then run it to get losses, the loss curve, average annual loss and the financing layers.</li>
+        <li><b>Flood risk and risk finance</b> (step 5). Enter the water level for each return period. Building costs are filled in for your country and region from the GEM global exposure model (or, if you choose, the JRC formula with World Bank data); replace them with local construction costs if you have them. Then run it to get losses, the loss curve, average annual loss and the financing layers.</li>
         <li><b>Social vulnerability</b> (step 6). Click <i>Use national figures</i> to fill in the vulnerable-group shares, optionally upload a census layer such as poverty by ward, then compute.</li>
         <li><b>Multi-hazard risk</b> (step 7). Choose the hazards and their weights, and for GLOF check the glaciers, lakes and traced outflow paths on the map: mark missing lakes or glaciers, or draw a lake's path yourself if it looks wrong. Then run it to see the risk matrix, the hotspots and the combined risk map.</li>
         <li><b>Report and export</b> (step 8). <i>Download full package</i> gives you a ZIP with a written summary, all your settings, a detailed table for each step you ran, publication maps and charts, tables for every building and facility with all analysis values, the risk-matrix calculation, and the map layers for QGIS. The checklist has a CSV for each completed step. Each step also has a <i>Map (PNG, 300 DPI)</i> button and charts you can download as SVG or PNG for reports and papers. Hover over any building or facility for its details. The <b>Layers</b> box at the bottom-left of the map switches the basemap, turns layers on and off, and shows each layer's legend. The <b>3D</b> button shows the terrain and buildings at their real height (right-drag or Ctrl+drag to tilt and rotate).</li>
@@ -301,7 +313,7 @@
       <h3>Good practice</h3>
       <ul>
         <li>Start with a single village or ward, then expand.</li>
-        <li>Replace the default water levels, costs and shares with local data.</li>
+        <li>Replace the default water levels and shares, and the looked-up building costs, with local data where you have it.</li>
         <li>Results depend on how completely OpenStreetMap covers your area. Check against the satellite basemap and <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">help improve the map</a>.</li>
         <li>These are screening estimates for prioritisation. Verify hotspots in the field and against official hazard maps.</li>
       </ul>
