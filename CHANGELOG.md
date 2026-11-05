@@ -8,6 +8,17 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.10.2] – 2026-11-05
+
+No method changes: results are identical to 0.10.1.
+
+### Added
+- **Automated tests** of the core calculations (`node --test`, nothing to install): damage curves, building loss, average annual loss, loss at any return period, risk-finance layers, multi-hazard index, combined risk, risk matrix, social vulnerability classes and geometry, checked against hand-worked values ([#2](https://github.com/gomalhunzai/openhvra/issues/2)).
+- **Tests run automatically** on every push and pull request with GitHub Actions, with a syntax check of every script ([#3](https://github.com/gomalhunzai/openhvra/issues/3)).
+
+### Changed
+- **The Inter font and MapLibre 4.7.1 are now served from this site** instead of Google Fonts and jsDelivr: visitors' IP addresses are no longer sent to Google when the app opens, and the app no longer depends on an outside server to load. Files were checked against the npm registry's integrity hashes ([#4](https://github.com/gomalhunzai/openhvra/issues/4)).
+
 ## [0.10.1] – 2026-10-18
 
 No method changes: results are identical to 0.10.0.

@@ -1,0 +1,9 @@
+{
+  "name": "openhvra",
+  "private": true,
+  "type": "module",
+  "description": "OpenHVRA has no dependencies; this file only lets Node run the tests.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -194,7 +194,7 @@ export function expectedAnnual(points) {
   return last ? s + last.v / last.rp : 0;
 }
 
-function floodLoss(p, depth, P) {
+export function floodLoss(p, depth, P) {
   const df = damageFraction(DAMAGE_CURVES[CURVE_FOR[p.cls]], depth);
   const floorsHit = Math.min(p.floors, Math.max(1, Math.ceil(depth / 3)));
   return P.costs[p.cls] * p.footprint * floorsHit * (1 + P.contentsPct / 100) * df;

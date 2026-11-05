@@ -8,7 +8,7 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.10.1 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.10.2 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
 
@@ -130,6 +130,14 @@ node serve.mjs        # then open http://localhost:8080
 
 There is no build step and nothing to install. Any static server works.
 
+### Run the tests
+
+```sh
+node --test           # or: npm test   (Node 20 or newer, nothing to install)
+```
+
+The tests in `tests/` check the core calculations (damage curves, losses, average annual loss, risk-finance layers, multi-hazard index, risk matrix, social vulnerability classes and geometry) against hand-worked values. Run them before a release: a patch release must leave every result unchanged.
+
 ## Deploy for free
 
 The app is plain static files, so you can host it on GitHub Pages (*Settings → Pages → Deploy from branch*), Netlify or Cloudflare Pages.
@@ -148,6 +156,7 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 | `js/draw.js`, `js/controls.js` | Area drawing tool, map toolbar and basemap switcher |
 | `js/chart.js` | Loss-exceedance curve (SVG) |
 | `js/main.js` | Map, layers and UI |
+| `tests/` | Automated tests of the core calculations (`node --test`) |
 
 ## Limitations: read before using the results
 
@@ -163,7 +172,7 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 - **Risk-finance costs** (premium multiples, credit fees) are indicative. Real pricing depends on markets and on basis risk.
 - Please respect the usage policies of [Overpass](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html), [OSM tiles](https://operations.osmfoundation.org/policies/tiles/), [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) and [OpenTopoMap](https://opentopomap.org/about). For heavy use, self-host or use commercial providers.
 
-**Privacy:** visits are counted anonymously with [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data). Files you upload are processed in your browser and are not sent anywhere.
+**Privacy:** visits are counted anonymously with [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data). Files you upload are processed in your browser and are not sent anywhere. The font and the map library are served from this site, so opening the app sends nothing to Google Fonts or a CDN; map tiles, elevation tiles and OpenStreetMap data still come from their providers.
 
 Data © OpenStreetMap contributors (ODbL). Elevation: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
 
@@ -172,3 +181,5 @@ Data © OpenStreetMap contributors (ODbL). Elevation: [AWS Terrain Tiles](https:
 The OpenHVRA code is released under the [MIT License](LICENSE): you may use, copy, modify and share it freely, including in other projects, as long as the copyright and license notice are kept.
 
 Data used and produced by the app keep their own licenses. OpenStreetMap data is © OpenStreetMap contributors under the [ODbL](https://www.openstreetmap.org/copyright), which also applies to outputs derived from it (exported tables, layers and maps): credit OpenStreetMap when you share them.
+
+Bundled third-party files keep their own licenses: [MapLibre GL JS](https://maplibre.org) 4.7.1 in `vendor/` (BSD-3-Clause, see `vendor/maplibre-gl-4.7.1/LICENSE.txt`) and the [Inter](https://rsms.me/inter/) font in `assets/fonts/` (SIL Open Font License 1.1, see `assets/fonts/LICENSE-Inter.txt`).

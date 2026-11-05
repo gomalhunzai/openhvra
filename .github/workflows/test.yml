@@ -1,0 +1,27 @@
+# Runs the tests on every push and pull request (issue #3).
+# Actions are pinned to exact commits so a changed tag upstream cannot
+# alter what runs here; the job can only read the repository.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Syntax check of every script
+        run: for f in js/*.js serve.mjs tests/*.js; do node --check "$f" || exit 1; done
+      - name: Run the tests
+        run: node --test
