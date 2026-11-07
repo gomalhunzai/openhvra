@@ -8,7 +8,7 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.12.2 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.12.3 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and the Copernicus 30 m global elevation model.
 
@@ -179,7 +179,15 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 | `js/upload.js` | Reading boundary files (Shapefile, GeoJSON, TopoJSON, KML/KMZ, GPX, GeoPackage, WKT), reprojection, simplification |
 | `js/draw.js`, `js/controls.js` | Area drawing tool, map toolbar and basemap switcher |
 | `js/chart.js` | Loss-exceedance curve (SVG) |
-| `js/main.js` | Map, layers and UI |
+| `js/main.js` | Entry point: loads the interface modules in page order |
+| `js/ui/shared.js`, `js/ui/format.js` | Shared app state and constants; number and text formatting |
+| `js/ui/map.js` | The map: basemaps, layers, colours and map controls |
+| `js/ui/area.js` | Step 1: area of interest, uploaded boundaries, loading OSM data |
+| `js/ui/population.js`, `js/ui/probe.js` | Step 2 (population model) and step 3 (cursor probe, hover tooltips) |
+| `js/ui/exposure.js`, `js/ui/flood.js` | Step 4 (exposure by distance) and step 5 (flood risk and risk finance) |
+| `js/ui/social.js`, `js/ui/multihazard.js` | Step 6 (social vulnerability) and step 7 (multi-hazard risk) |
+| `js/ui/glof.js`, `js/ui/view3d.js` | Glaciers, lakes, marks and GLOF paths; 3D view |
+| `js/ui/exports.js`, `js/ui/misc.js` | Step 8 and per-step exports; place search, mobile layout, welcome dialog |
 | `tests/` | Automated tests of the core calculations (`node --test`) |
 
 ## Limitations: read before using the results

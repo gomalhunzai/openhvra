@@ -32,6 +32,13 @@ node --test           # or: npm test
 
 The tests in `tests/` check the core calculations against hand-worked values. They also run automatically on every push and pull request (GitHub Actions). If you add or change a calculation, add a test with an expected value you've checked by hand, and explain in a comment where it comes from.
 
+## Where the code is
+
+- `js/*.js` (for example `risk.js`, `hazards.js`, `social.js`): the calculations. They don't touch the page, so the tests can run them in Node.
+- `js/ui/<step>.js`: the interface for one step (`area.js` is step 1, `flood.js` step 5, and so on). A change to one step usually stays in one file.
+- `js/ui/shared.js` (state and constants), `js/ui/format.js` (formatting) and `js/ui/map.js` (the map and its controls) are used by all steps.
+- `js/ui/map.js` must not import the step modules, so the map always exists before the steps load. When a map control needs a step's function, the step adds it to `actions` (see the end of `area.js`).
+
 ## Making a change
 
 1. Open an issue first for anything bigger than a small fix, so the approach can be agreed.

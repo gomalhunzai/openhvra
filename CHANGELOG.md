@@ -8,6 +8,13 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.12.3] – 2026-11-07
+
+No method changes: results are identical to 0.12.2.
+
+### Changed
+- **The interface code is split into one file per step** ([#5](https://github.com/gomalhunzai/openhvra/issues/5)). `js/main.js` (2,089 lines) is now a short entry point, and each step's interface is in its own module in `js/ui/` (for example `area.js` for step 1 and `flood.js` for step 5), next to shared modules for state, formatting and the map. The code was moved, not rewritten. A full run of steps 1 to 8 on a test area produced an identical export package before and after (all 68 files, including maps and charts), and the interactive features (drawing, probe, layers, 3D, GLOF marks, exports, search) were checked for errors.
+
 ## [0.12.2] – 2026-11-07
 
 No method changes: results are identical to 0.12.1.
