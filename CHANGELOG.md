@@ -8,6 +8,13 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.12.2] – 2026-11-07
+
+No method changes: results are identical to 0.12.1.
+
+### Fixed
+- **Exported maps with wrong colours in some browsers.** In Firefox on Linux, the map image in the PNG layouts could come out with red and blue swapped (blue flood depths and waterways shown orange, orange roads shown blue), while the legend stayed correct. Spotted in the Hebden Bridge test export ([#1](https://github.com/gomalhunzai/openhvra/issues/1)). The map is now read from the graphics card in a fixed colour order, so exports look the same in every browser.
+
 ## [0.12.1] – 2026-11-07
 
 No method changes: results are identical to 0.12.0.

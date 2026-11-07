@@ -44,6 +44,41 @@ function wrap(ctx, s, maxW) {
   return lines;
 }
 
+// The rendered map as a 2D canvas. Copying the WebGL canvas with drawImage
+// swaps red and blue in some browsers (seen in Firefox on Linux), so the
+// pixels are read with readPixels, which always returns RGBA.
+function mapPixels(map) {
+  const src = map.getCanvas();
+  const gl = map.painter?.context?.gl;
+  if (!gl) return src;
+  try {
+    const w = gl.drawingBufferWidth;
+    const h = gl.drawingBufferHeight;
+    const px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    const img = new ImageData(w, h);
+    const row = w * 4;
+    for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * row, (h - y) * row), y * row); // GL rows are bottom-up
+    // WebGL colours are premultiplied by alpha (the basemap is partly transparent); ImageData is not.
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const al = d[i + 3];
+      if (al && al < 255) {
+        d[i] = Math.min(255, Math.round((d[i] * 255) / al));
+        d[i + 1] = Math.min(255, Math.round((d[i + 1] * 255) / al));
+        d[i + 2] = Math.min(255, Math.round((d[i + 2] * 255) / al));
+      }
+    }
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    c.getContext('2d').putImageData(img, 0, 0);
+    return c;
+  } catch {
+    return src;
+  }
+}
+
 // opts: { bounds: [[w,s],[e,n]], title, subtitle, legendTitle, legend: [{ label, color, kind: 'fill'|'line'|'dot' }],
 //         ramp: [{ label, color }], stats: [[label, value]], credits, show: [layerIds], hide: [layerIds],
 //         data: { sourceId: geojson } }
@@ -93,7 +128,7 @@ export async function renderMapLayout(map, opts) {
     ctx.fillText(opts.subtitle, M, 68);
 
     // Map image and frame.
-    ctx.drawImage(off.getCanvas(), mapBox.x, mapBox.y, mapBox.w, mapBox.h);
+    ctx.drawImage(mapPixels(off), mapBox.x, mapBox.y, mapBox.w, mapBox.h);
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 1;
     ctx.strokeRect(mapBox.x + 0.5, mapBox.y + 0.5, mapBox.w - 1, mapBox.h - 1);
