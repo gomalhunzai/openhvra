@@ -8,7 +8,7 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.12.0 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.12.1 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
 A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and the Copernicus 30 m global elevation model.
 
@@ -203,7 +203,9 @@ Data © OpenStreetMap contributors (ODbL). Elevation: [Copernicus DEM GLO-30](ht
 
 ## License
 
-The OpenHVRA code is released under the [MIT License](LICENSE): you may use, copy, modify and share it freely, including in other projects, as long as the copyright and license notice are kept.
+Copyright © 2026 Gomal Amin. The OpenHVRA code is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). You may use, copy, modify and share it freely, including for commercial work. If you share a changed version, or run a changed version on a website or server that other people use, you must make its complete source code available to them under the same licence. Keep the copyright and licence notices, and keep the app's link to its source code (in the footer and the help).
+
+Versions up to and including 0.12.0 were released under the MIT License, and copies of those versions remain available under it.
 
 Data used and produced by the app keep their own licenses. OpenStreetMap data is © OpenStreetMap contributors under the [ODbL](https://www.openstreetmap.org/copyright), which also applies to outputs derived from it (exported tables, layers and maps): credit OpenStreetMap when you share them.
 

@@ -8,6 +8,13 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.12.1] – 2026-11-07
+
+No method changes: results are identical to 0.12.0.
+
+### Changed
+- **Licence changed from MIT to the GNU Affero General Public License v3.0** (AGPL-3.0-only). OpenHVRA stays free to use, copy, modify and share, including for commercial work, but anyone who shares a changed version, or runs one on a website or server for other people, must make its source code available under the same licence. Versions up to 0.12.0 remain available under MIT. Data licences (OpenStreetMap ODbL, GEM CC BY-NC-SA 4.0, Copernicus DEM) are unchanged.
+
 ## [0.12.0] – 2026-11-07
 
 ### Method change: elevation data (flood, exposure and multi-hazard results differ from 0.11.x)

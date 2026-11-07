@@ -7,12 +7,12 @@ abstract: >-
   population, flood risk and risk finance, social vulnerability and
   multi-hazard risk.
 type: software
-license: MIT
+license: AGPL-3.0-only
 authors:
   - family-names: Amin
     given-names: Gomal
     website: "https://www.openstreetmap.org/user/Gomal%20Amin"
-version: 0.12.0
+version: 0.12.1
 date-released: 2026-11-07
 url: "https://gomalhunzai.github.io/openhvra/"
 repository-code: "https://github.com/gomalhunzai/openhvra"

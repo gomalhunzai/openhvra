@@ -51,9 +51,9 @@ The version number lives in `js/version.js` and `CITATION.cff`, and is stamped o
 
 ## Data and licences
 
-- The code is MIT licensed. By contributing, you agree your contribution is released under the same licence.
+- The code is licensed under the GNU AGPL v3.0 (AGPL-3.0-only). By contributing, you agree your contribution is released under the same licence.
 - OpenStreetMap data is © OpenStreetMap contributors (ODbL). Exports derived from it must credit OpenStreetMap.
-- `data/gem-costs.json` is derived from the GEM Global Exposure Model and is **CC BY-NC-SA 4.0**, not MIT. See [`data/README.md`](data/README.md).
+- `data/gem-costs.json` is derived from the GEM Global Exposure Model and is **CC BY-NC-SA 4.0**, not AGPL. See [`data/README.md`](data/README.md).
 - If you add a new data source, check its licence and terms of use first, and add the attribution to the README and the exports.
 
 ## Improving the map itself
