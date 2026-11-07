@@ -8,6 +8,16 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.12.0] – 2026-11-07
+
+### Method change: elevation data (flood, exposure and multi-hazard results differ from 0.11.x)
+- **Copernicus DEM GLO-30 is now the default elevation source** ([#9](https://github.com/gomalhunzai/openhvra/issues/9)). It is one consistent 30 m global model, read straight from its files on Microsoft Planetary Computer; only the parts covering the area are downloaded. Previously the AWS Terrain Tiles were used, which are SRTM (from 2000) in most of the world and national data in some countries.
+- **Choose the elevation source in step 1**: Copernicus DEM GLO-30 or AWS Terrain Tiles. With Terrain Tiles, results are identical to 0.11.2.
+- If Copernicus can't be downloaded, the app uses the Terrain Tiles automatically and says so.
+- The search for the river bed next to each waterway and the slope calculation now use one data cell (about 30 m) on Copernicus, matching its native spacing. GLOF outflow tracing and lake elevations use Copernicus at about 60 m over the wider area around glacial lakes.
+- Every export records the elevation source, grid spacing and files used (`parameters.csv`), and the credits include the Copernicus attribution.
+- **Validation:** in a narrow, wooded valley town where the Terrain Tiles are built on national LiDAR, Copernicus found 71% of the buildings in the official 1-in-100-year flood zone at the default 3 m water level, against 90% with the Terrain Tiles. See [#9](https://github.com/gomalhunzai/openhvra/issues/9) and the README section *Elevation data*.
+
 ## [0.11.2] – 2026-11-05
 
 No method changes: results are identical to 0.11.1.

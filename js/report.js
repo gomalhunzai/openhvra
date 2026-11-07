@@ -104,6 +104,16 @@ function parameterRows(S) {
   add('1 Area & data', 'bbox_w_s_e_n', S.ds.bbox.join(' '));
   add('1 Area & data', 'building_detail', S.loadOpts?.buildings);
   add('1 Area & data', 'layers_downloaded', ['facilities', 'waterways', 'roads', 'paths'].filter((k) => S.loadOpts?.[k]));
+  const E = S.elevation;
+  if (E) {
+    add('1 Area & data', 'elevation_source', E.used ? E.source : `${E.chosen} (not used yet)`);
+    if (E.used) {
+      add('1 Area & data', 'elevation_grid', E.label);
+      if (E.gridM) add('1 Area & data', 'elevation_grid_spacing_m', E.gridM);
+      if (E.files.length) add('1 Area & data', 'elevation_files', E.files);
+      if (E.fallback) add('1 Area & data', 'elevation_note', E.fallback);
+    }
+  }
   const P = S.ds.popParams;
   add('2 Population', 'floor_area_per_person_m2', P.m2PerPerson);
   add('2 Population', 'storeys_if_unknown', P.defaultLevels);
@@ -296,7 +306,8 @@ function summaryText(S) {
   L.push('Default water levels and population shares are placeholders unless you changed them: see parameters.csv.');
   L.push('Building costs come from an open global model (see step 5) unless you entered your own: local costs are better.');
   h('Credits');
-  L.push('Data © OpenStreetMap contributors (ODbL), Overpass API, AWS Terrain Tiles, USGS, World Bank, Nominatim.');
+  L.push('Data © OpenStreetMap contributors (ODbL), Overpass API, USGS, World Bank, Nominatim.');
+  L.push(`Elevation: ${S.elevation?.credit ?? 'Copernicus DEM GLO-30'}${S.elevation?.fallback ? ` (${S.elevation.fallback})` : ''}.`);
   if (S.risk?.params.costCitation) L.push(`Building costs: ${S.risk.params.costCitation}`);
   L.push('OpenHVRA by Gomal Amin — https://www.openstreetmap.org/user/Gomal%20Amin');
   return L.join('\n');

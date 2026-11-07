@@ -8,9 +8,9 @@
 
 Created and maintained by [Gomal Amin](https://www.openstreetmap.org/user/Gomal%20Amin) (OpenStreetMap profile).
 
-**Current version: 0.11.2 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
+**Current version: 0.12.0 (beta)**. See the [CHANGELOG](CHANGELOG.md) for what changed in each version.
 
-A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and open elevation tiles.
+A free web map for disaster risk practitioners. It shows how many people, buildings and critical facilities lie near rivers, streams and roads, and estimates what floods could cost and how to finance them. Everything comes from open data: OpenStreetMap and the Copernicus 30 m global elevation model.
 
 ## What it does
 
@@ -28,6 +28,7 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    - If a file contains several areas (for example all wards of a district), pick one from the list or use them all. Multi-part areas and holes are supported, and very detailed boundaries are simplified automatically. A file with no polygons (points or a GPX track) uses its bounding box.
    - The libraries that read these formats only download the first time you upload that type of file.
    - Pick which layers to download. **Light** mode (the default) downloads building bounding boxes instead of full footprints, which is about 3× smaller, and estimates each building's area from its box. Facilities are downloaded as centre points only.
+   - Pick the **elevation data** used by every step: **Copernicus DEM GLO-30** (the default) or the **AWS Terrain Tiles**. See [Elevation data](#elevation-data).
    - Buildings and the remaining layers download in parallel, from the public Overpass servers: each request starts on the server that has worked best recently, asks the next one too if there is no answer within 30 seconds, and uses whichever answers first. Downloads are cached in the browser for 3 days, so reloading the same area is instant.
 2. **Population model**: estimates residents per building as residential floor area (footprint × storeys) ÷ floor area per person. Enter a known total (census, WorldPop or GHSL) with its source and year to calibrate; the step explains where to find one. Buildings are split into residential, commercial, industrial, public and ancillary classes.
 3. **Cursor probe**: a circle (25–1000 m) follows the mouse and shows live counts of residents, buildings and facilities, road and waterway length, and the distance to the nearest waterway and major road.
@@ -108,6 +109,17 @@ The **Layers box** at the bottom-left of the map lists everything in one vertica
 
 The box collapses to a single button, and starts collapsed on phones.
 
+## Elevation data
+
+Flood depth, steep banks, and the landslide, flash-flood, avalanche and GLOF scores all depend on elevation. Choose the source in step 1; every export records the one that was used.
+
+- **Copernicus DEM GLO-30** (default): one consistent 30 m global model from the TanDEM-X radar mission (2011–2015), read directly from its files on [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/dataset/cop-dem-glo-30). Independent comparisons have found it the most accurate free global elevation model, ahead of SRTM, NASADEM and ALOS, including in steep mountains. Only the parts of the files that cover your area are downloaded (typically 3–10 MB). Heights are metres above the EGM2008 geoid. It is a *surface* model: rooftops and tree canopy are included. A few areas are left out of the public release (Armenia and Azerbaijan); there the app uses the Terrain Tiles.
+- **AWS Terrain Tiles**: a patchwork of the best open data in each place, made by Mapzen. In most of the world this is SRTM from 2000 (also ~30 m); in some countries it is national data, including bare-ground LiDAR, which can be more accurate than Copernicus in narrow valleys. Use it to compare, or where you know it is built on national LiDAR.
+
+If Copernicus can't be downloaded, the app uses the Terrain Tiles instead and says so in the step's status line and in the exports. The 3D view always uses the Terrain Tiles.
+
+**Validation.** In a test against official flood maps and recorded flood outlines for a narrow, wooded valley town where the Terrain Tiles are built on national LiDAR, Copernicus found fewer of the officially flooded buildings at the default water levels (71% of the 1-in-100-year flood zone, against 90%) and sat about 3 m higher on average, as expected for a surface model compared with bare ground. The full comparison is in [issue #9](https://github.com/gomalhunzai/openhvra/issues/9). Where the Terrain Tiles fall back to SRTM, which covers most of the world's mountain regions, Copernicus is expected to be the better of the two.
+
 The **3D** button on the map turns on 3D terrain (with hillshade and a height-exaggeration slider) and raises buildings to their real height (storeys × 3 m), coloured by the active layer. Right-drag or Ctrl+drag to tilt and rotate. Exported maps always stay flat and north-up.
 
 ## Versions and citation
@@ -156,7 +168,9 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 |---|---|
 | `js/osm.js` | Overpass queries (light and footprint modes), parallel download with fallback, IndexedDB cache, parsing and classification |
 | `js/analysis.js` | `Dataset`: area clipping, population model, cursor probe, distance exposure |
-| `js/risk.js` | Elevation tiles, flood-depth model, depth-damage curves, AAL and risk-finance layers |
+| `js/elevation.js` | Elevation source choice (Copernicus or Terrain Tiles) and fallback |
+| `js/copdem.js` | Copernicus DEM GLO-30 reader: Cloud Optimized GeoTIFF range requests, decoding, mosaicking onto a square grid |
+| `js/risk.js` | Elevation grids and Terrain Tiles, flood-depth model, depth-damage curves, AAL and risk-finance layers |
 | `js/costs.js` | Building replacement costs: GEM lookup by country and region, JRC formula with World Bank data, construction types |
 | `data/gem-costs.json` | GEM costs by country, region and construction type (built by `scripts/build-gem-costs.mjs`; CC BY-NC-SA 4.0) |
 | `js/spatial.js` | Projection, grid index, distance and geometry helpers |
@@ -174,7 +188,7 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 
 - **OSM coverage varies.** Missing buildings mean missing people and losses. Check against the satellite basemap.
 - **Population** is a floor-area model. Calibrate it with a census, WorldPop or GHSL total whenever you can. Gridded estimates can differ from each other and from the census by 20% or more in small areas, so the source and year are recorded in every export.
-- **The flood hazard is a proxy.** "Height above nearest waterway" ignores flood defences, channel capacity, backwater effects and rainfall flooding. The elevation data is about 30 m resolution with several metres of vertical error, and often includes buildings and trees. Replace the default water levels with values from local hydrology or a flood study.
+- **The flood hazard is a proxy.** "Height above nearest waterway" ignores flood defences, channel capacity, backwater effects and rainfall flooding. The elevation data is about 30 m resolution with several metres of vertical error, and the default Copernicus model includes buildings and trees, so channels in narrow, wooded valleys can look higher than they are. Replace the default water levels with values from local hydrology or a flood study.
 - **The multi-hazard scores are terrain and map proxies.** They don't model hazards physically: there is no flow routing for flash floods; GLOF paths are traced on ~30–60 m elevation where streams are unmapped and can go wrong in narrow gorges or flat valley floors (check them on the map and draw the path yourself if needed), no soil or rock data for landslides and earthquakes, and no snow climate for avalanches. Use them to find hotspots, then confirm with official hazard maps and field checks.
 - **The social vulnerability index uses proxies.** Where OSM is missing clinics, shelters or roads, areas look more vulnerable than they are. Vulnerable-group counts apply national shares evenly, so for local differences upload census data.
 - **Building costs are modelled national or regional averages.** GEM's values are themselves model estimates, and the JRC formula rests on construction-cost surveys from around 2010. Neither knows your town: use local construction costs where you have them. Costs in poor and informal areas can be far lower than the average (the JRC study reports informal homes worth about 8 times less, and mud homes about 5 times less than brick), so a low monetary loss does not mean a low impact: look at people affected and loss as a share of value too.
@@ -183,9 +197,9 @@ These are **screening estimates**, intended for prioritisation, not engineering 
 - **Risk-finance costs** (premium multiples, credit fees) are indicative. Real pricing depends on markets and on basis risk.
 - Please respect the usage policies of [Overpass](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html), [OSM tiles](https://operations.osmfoundation.org/policies/tiles/), [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) and [OpenTopoMap](https://opentopomap.org/about). For heavy use, self-host or use commercial providers.
 
-**Privacy:** visits are counted anonymously with [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data). Files you upload are processed in your browser and are not sent anywhere. The font and the map library are served from this site, so opening the app sends nothing to Google Fonts or a CDN; map tiles, elevation tiles and OpenStreetMap data still come from their providers.
+**Privacy:** visits are counted anonymously with [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data). Files you upload are processed in your browser and are not sent anywhere. The font and the map library are served from this site, so opening the app sends nothing to Google Fonts or a CDN; map tiles, elevation data and OpenStreetMap data still come from their providers.
 
-Data © OpenStreetMap contributors (ODbL). Elevation: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
+Data © OpenStreetMap contributors (ODbL). Elevation: [Copernicus DEM GLO-30](https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM) © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; all rights reserved, via [Microsoft Planetary Computer](https://planetarycomputer.microsoft.com/dataset/cop-dem-glo-30); and [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/).
 
 ## License
 

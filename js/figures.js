@@ -7,7 +7,7 @@ import { SVI_CLASSES, SVI_INDICATORS, GROUPS, groupCounts, sviSummary } from './
 import { HAZARDS, HIGH, LIKELIHOOD, IMPACT, rating, SCORE_CLASSES, scoreClass } from './hazards.js';
 
 const OSM = 'Buildings and facilities © OpenStreetMap contributors';
-const ELEV = 'elevation: AWS Terrain Tiles';
+const elev = (S) => `elevation: ${S.elevation?.short ?? 'Copernicus DEM GLO-30'}`;
 
 function subtitle(S, extra = '') {
   return `${S.areaLabel}${extra ? ` · ${extra}` : ''} · ${S.dateLabel}`;
@@ -42,7 +42,7 @@ export function figuresFor(S, step) {
       : [{ label: `Within ${E.dist} m`, value: E.pop, color: '#e03131' }];
     add('exposure-residents', barChart({
       title: `Residents within ${E.dist} m of ${src}`, subtitle: subtitle(S, E.elevation ? 'split by height above the water' : ''), rows,
-      axisLabel: 'Estimated residents', source: `${OSM}${E.elevation ? `; ${ELEV}` : ''}`,
+      axisLabel: 'Estimated residents', source: `${OSM}${E.elevation ? `; ${elev(S)}` : ''}`,
     }));
     const grows = Object.entries(FACILITY_GROUPS).filter(([k]) => E.groups[k]).map(([k, g]) => ({ label: g.label, value: E.groups[k], color: g.color }));
     if (grows.length) add('exposure-facilities', barChart({ title: `Exposed facilities by type (within ${E.dist} m of ${src})`, subtitle: subtitle(S), rows: grows, axisLabel: 'Number of facilities', source: OSM }));
@@ -55,17 +55,17 @@ export function figuresFor(S, step) {
     add('flood-loss-exceedance', exceedanceChart({
       title: 'Flood loss-exceedance curve', subtitle: subtitle(S, `average annual loss ${money(R.aal)}`),
       points: R.curve.map((c) => ({ rp: c.rp, value: c.loss })), format: money, yLabel: `Loss (${cur})`,
-      source: `${OSM}; ${ELEV}; JRC depth-damage curves (Asia)`,
+      source: `${OSM}; ${elev(S)}; JRC depth-damage curves (Asia)`,
     }));
     add('flood-people-by-scenario', barChart({
       title: 'People affected by flood scenario', subtitle: subtitle(S),
       rows: R.scenarios.map((s) => ({ label: `${s.rp}-year (${s.level} m)`, value: s.pop })), axisLabel: 'Estimated people in flooded buildings',
-      source: `${OSM}; ${ELEV}`,
+      source: `${OSM}; ${elev(S)}`,
     }));
     add('flood-loss-by-scenario', barChart({
       title: 'Building loss by flood scenario', subtitle: subtitle(S),
       rows: R.scenarios.map((s) => ({ label: `${s.rp}-year (${s.level} m)`, value: s.loss })), format: money, axisLabel: `Loss (${cur})`,
-      source: `${OSM}; ${ELEV}; replacement costs as set by user`,
+      source: `${OSM}; ${elev(S)}; replacement costs as set by user`,
     }));
     if (S.layers) {
       add('finance-layers', barChart({
@@ -102,17 +102,17 @@ export function figuresFor(S, step) {
       title: 'Multi-hazard risk matrix', subtitle: subtitle(S),
       items: mh.matrix.map((m) => ({ label: HAZARDS[m.key].short, likelihood: m.likelihood, impact: m.impact })),
       likelihoodLabels: LIKELIHOOD, impactLabels: IMPACT, rating,
-      source: `${OSM}; ${ELEV}; USGS earthquake catalogue`,
+      source: `${OSM}; ${elev(S)}; USGS earthquake catalogue`,
     }));
     const homes = ds.buildings.filter((b) => b.pop > 0 && b.hz);
     add('residents-high-hazard', barChart({
       title: `Residents at high hazard (score ≥ ${HIGH})`, subtitle: subtitle(S),
       rows: mh.keys.map((k) => ({ label: HAZARDS[k].label, value: homes.filter((b) => (b.hz[k] ?? 0) >= HIGH).reduce((a, b) => a + b.pop, 0), color: '#ad2b2b' })),
-      axisLabel: 'Estimated residents', source: `${OSM}; ${ELEV}`,
+      axisLabel: 'Estimated residents', source: `${OSM}; ${elev(S)}`,
     }));
     const byClass = (f) => SCORE_CLASSES.map((c, i) => ({ label: c.label, color: c.color, value: homes.filter((b) => f(b) != null && scoreClass(f(b)) === i).reduce((a, b) => a + b.pop, 0) }));
-    add('multi-hazard-classes', barChart({ title: 'Residents by multi-hazard class', subtitle: subtitle(S), rows: byClass((b) => b.mhi), axisLabel: 'Estimated residents', source: `${OSM}; ${ELEV}` }));
-    if (mh.withSvi) add('combined-risk-classes', barChart({ title: 'Residents by combined risk class (hazard × social vulnerability)', subtitle: subtitle(S), rows: byClass((b) => b.risk), axisLabel: 'Estimated residents', source: `${OSM}; ${ELEV}` }));
+    add('multi-hazard-classes', barChart({ title: 'Residents by multi-hazard class', subtitle: subtitle(S), rows: byClass((b) => b.mhi), axisLabel: 'Estimated residents', source: `${OSM}; ${elev(S)}` }));
+    if (mh.withSvi) add('combined-risk-classes', barChart({ title: 'Residents by combined risk class (hazard × social vulnerability)', subtitle: subtitle(S), rows: byClass((b) => b.risk), axisLabel: 'Estimated residents', source: `${OSM}; ${elev(S)}` }));
   }
   return out;
 }

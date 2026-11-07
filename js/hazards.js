@@ -18,7 +18,7 @@
 
 import { SOURCES } from './analysis.js';
 import { runQuery } from './osm.js';
-import { loadDEM } from './risk.js';
+import { loadElevation } from './elevation.js';
 import { GridIndex, nearestOnSeg, lonLatArea } from './spatial.js';
 import { parseGlofElements, glofScore, GLOF_DEFAULTS } from './glof.js';
 
@@ -164,7 +164,7 @@ export async function loadHazardContext(bbox, { need = {}, signal, onStatus, ext
         onStatus?.(`Looking up elevation of ${lakes.length} glacial lake(s)…`);
         await Promise.all(lakes.map(async (l) => {
           try {
-            const dem = await loadDEM([l.lon - 0.002, l.lat - 0.002, l.lon + 0.002, l.lat + 0.002], { signal });
+            const dem = await loadElevation([l.lon - 0.002, l.lat - 0.002, l.lon + 0.002, l.lat + 0.002], { signal, kind: 'point' });
             l.elev = dem.elev(l.lon, l.lat);
           } catch {
             l.elev = NaN;
@@ -219,8 +219,7 @@ export function scoreHazards(ds, dem, ctx, P) {
   else if (has('glof') && !P.glofIdx) {
     notes.glof = `${ctx.lakes.length} glacial lake(s) found, but none drains through this area: not applicable. See the traced paths on the map.`;
   }
-  let maxElev = -Infinity;
-  for (const t of dem.tiles) if (t) for (let i = 0; i < t.length; i += 97) if (t[i] > maxElev) maxElev = t[i];
+  const maxElev = dem.maxElev();
   if (has('avalanche') && maxElev < P.snowLine) notes.avalanche = `No terrain above the snow line (${P.snowLine} m) nearby: not applicable.`;
 
   // Coastline segments in the dataset plane.
@@ -251,11 +250,11 @@ export function scoreHazards(ds, dem, ctx, P) {
 
     // Height above the nearest waterway (any) and above the nearest river.
     const nw = ds.nearest(p.x, p.y, anyWater, 1000);
-    const handAll = nw ? Math.max(0, elev - dem.minAround(nw.lonlat[0], nw.lonlat[1], 2)) : Infinity;
+    const handAll = nw ? Math.max(0, elev - dem.minAround(nw.lonlat[0], nw.lonlat[1])) : Infinity;
 
     if (has('river') && !notes.river) {
       const nr = ds.nearest(p.x, p.y, river, 1000);
-      const hand = nr ? Math.max(0, elev - dem.minAround(nr.lonlat[0], nr.lonlat[1], 2)) : Infinity;
+      const hand = nr ? Math.max(0, elev - dem.minAround(nr.lonlat[0], nr.lonlat[1])) : Infinity;
       hz.river = scale(P.floodLevel - hand, 0, 2);
     }
 

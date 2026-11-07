@@ -1,13 +1,14 @@
 import { loadOSM, clearCache, FACILITY_GROUPS, CRITICAL_GROUPS, BUILDING_CLASSES } from './osm.js';
 import { Dataset, SOURCES, DEFAULT_POP } from './analysis.js';
 import { circlePolygon, ringBBox, lonLatArea, bboxAreaKm2, makeProjection } from './spatial.js';
-import { loadDEM, floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, DEFAULT_COSTS, DEFAULT_FINANCE } from './risk.js';
+import { floodRisk, financeLayers, expectedAnnual, DEFAULT_SCENARIOS, DEFAULT_COSTS, DEFAULT_FINANCE } from './risk.js';
 import { DrawTool } from './draw.js';
 import { CONSTRUCTION_TYPES, costsFor } from './costs.js';
 import { DrawControl, LayerControl, ThreeDControl } from './controls.js';
 import { lossCurve } from './chart.js';
 import { VERSION, REPO } from './version.js';
 import { figuresFor } from './figures.js';
+import { loadElevation, setElevationSource, elevationSource, elevationCredit, ELEVATION_SOURCES } from './elevation.js';
 import { svgToPng } from './pubcharts.js';
 import { renderMapLayout } from './mapexport.js';
 import { traceLakes, pathIndex, GLOF_DEFAULTS } from './glof.js';
@@ -349,6 +350,10 @@ mapEl.addEventListener('drop', (e) => {
   handleUpload(e.dataTransfer.files);
 });
 document.querySelectorAll('input[name=bdetail]').forEach((r) => r.addEventListener('change', updateAoiInfo));
+// Elevation source for all analyses. Results already shown keep the elevation
+// they used (and say so in exports) until a step is run again.
+$('elev-source').addEventListener('change', (e) => setElevationSource(e.target.value));
+setElevationSource($('elev-source').value);
 
 // ---- Loading data -------------------------------------------------------------------------
 
@@ -529,7 +534,7 @@ function probe(lngLat) {
 
 function heightAbove(lng, lat, n) {
   const dem = state.dem.dem;
-  const h = dem.elev(lng, lat) - dem.minAround(n.lonlat[0], n.lonlat[1], 2);
+  const h = dem.elev(lng, lat) - dem.minAround(n.lonlat[0], n.lonlat[1]);
   return Number.isFinite(h) ? `${Math.max(0, h).toFixed(1)} m` : '—';
 }
 
@@ -796,12 +801,14 @@ function riskParams() {
 // Padded ~1.5 km so rivers, slopes and avalanche paths just outside are covered.
 async function ensureDEM(statusEl) {
   const ds = state.dataset;
-  const key = ds.bbox.join(',');
+  const key = `${elevationSource()}:${ds.bbox.join(',')}`;
   if (state.dem?.key === key) return state.dem.dem;
   const [w, s, e, n] = ds.bbox;
   const pad = 0.015;
-  const dem = await loadDEM([w - pad, s - pad, e + pad, n + pad], {
-    onProgress: (done, total) => (statusEl.textContent = `Downloading elevation tiles… ${done}/${total}`),
+  const name = ELEVATION_SOURCES[elevationSource()].label;
+  statusEl.textContent = `Downloading elevation (${name})…`;
+  const dem = await loadElevation([w - pad, s - pad, e + pad, n + pad], {
+    onProgress: (done, total) => (statusEl.textContent = `Downloading elevation (${name})… ${done}/${total}`),
   });
   state.dem = { key, dem };
   return dem;
@@ -843,7 +850,8 @@ function computeRisk(P = state.risk?.params ?? riskParams()) {
     const i = state.risk.scenarios.findIndex((s) => s.rp >= 100);
     state.riskScenario = i < 0 ? n - 1 : i;
   }
-  $('risk-status').textContent = `Assessed ${fmt(state.risk.assessed)} buildings and facilities within ${m(P.maxDist)} of ${SOURCES[P.source].label.toLowerCase()} using elevation zoom ${state.dem.dem.z} (${Math.round(performance.now() - t0)} ms).`;
+  $('risk-status').textContent = `Assessed ${fmt(state.risk.assessed)} buildings and facilities within ${m(P.maxDist)} of ${SOURCES[P.source].label.toLowerCase()} using elevation from ${state.dem.dem.label} (${Math.round(performance.now() - t0)} ms).`;
+  if (state.dem.dem.fallback) $('risk-status').innerHTML += ` <span class="warn">${escapeHtml(state.dem.dem.fallback)}.</span>`;
   renderRisk();
   renderFinance();
   $('finance').classList.remove('hidden');
@@ -1224,7 +1232,8 @@ async function runMH() {
     const notes = scoreHazards(ds, dem, ctx, P);
     state.mh = { use, notes, weights: mhWeights(use), ctx, settings: P, ms: Math.round(performance.now() - t0), show: 'mhi' };
     combineMH();
-    $('mh-status').textContent = `Scored ${fmt(ds.points.length)} buildings and facilities for ${use.size} hazards in ${(state.mh.ms / 1000).toFixed(1)}s (elevation zoom ${dem.z}).`;
+    $('mh-status').textContent = `Scored ${fmt(ds.points.length)} buildings and facilities for ${use.size} hazards in ${(state.mh.ms / 1000).toFixed(1)}s (elevation: ${dem.label}).`;
+    if (dem.fallback) $('mh-status').innerHTML += ` <span class="warn">${escapeHtml(dem.fallback)}.</span>`;
   } catch (err) {
     $('mh-status').innerHTML = `<span class="warn">Multi-hazard analysis failed: ${escapeHtml(err.message)}</span>`;
   } finally {
@@ -1765,14 +1774,14 @@ const NO_FACILITIES = ['facilities'];
 // Glaciers, lakes and outflow paths appear only on the GLOF map (user marks never).
 const CRYO = ['cryo-glacier-fill', 'cryo-glacier-line', 'cryo-paths-other', 'cryo-paths', 'cryo-lakes'];
 const MARKS = ['cryo-marks-line', 'cryo-marks-pt'];
-const CREDITS = 'Data © OpenStreetMap contributors (ODbL), AWS Terrain Tiles, USGS, World Bank';
+const credits = () => `Data © OpenStreetMap contributors (ODbL); elevation: ${elevationCredit(state.dem?.dem)}; USGS; World Bank`;
 
 // Map layout settings for a step's map. `view` picks the multi-hazard view.
 function mapSpec(step, view) {
   const S = snapshot();
   const [w, s, e, n] = state.dataset.bbox;
   const base = {
-    bounds: [[w, s], [e, n]], credits: CREDITS,
+    bounds: [[w, s], [e, n]], credits: credits(),
     subtitle: `${S.areaLabel} · ${S.areaKm2.toFixed(2)} km² · ${S.dateLabel}`,
     legend: [...(state.loadedAoi ? [{ label: 'Analysed area', color: '#7048e8', kind: 'line' }] : []), ...ORIENT_LEGEND],
   };
@@ -1907,6 +1916,23 @@ async function buildMaps(onStatus) {
 
 // ---- Report & downloads (step 8) --------------------------------------------------------------
 
+// The elevation actually used by the analyses (or the chosen source if none ran yet).
+function elevationInfo() {
+  const dem = state.dem?.dem;
+  const src = ELEVATION_SOURCES[dem?.source ?? elevationSource()];
+  return {
+    used: !!dem,
+    chosen: ELEVATION_SOURCES[elevationSource()].label,
+    source: src.label,
+    label: dem?.label ?? src.label,
+    gridM: dem?.resolutionM ?? null,
+    files: dem?.files ?? [],
+    fallback: dem?.fallback ?? '',
+    credit: src.credit,
+    short: src.short,
+  };
+}
+
 // Everything the export needs, as currently shown in the app.
 function snapshot() {
   const ds = state.dataset;
@@ -1931,6 +1957,7 @@ function snapshot() {
     svi: state.sviDone,
     shares: shares(),
     mh: state.mh,
+    elevation: elevationInfo(),
   };
 }
 

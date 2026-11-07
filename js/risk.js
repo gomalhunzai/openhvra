@@ -4,7 +4,8 @@
 // ground elevation is compared with the channel elevation at its nearest
 // waterway; a flood scenario raising water `level` metres above the channel
 // gives a depth of `level - HAND` at that building. Elevation comes from the
-// open AWS Terrain Tiles (Terrarium PNGs, mostly SRTM/NASADEM ~30 m).
+// Copernicus DEM GLO-30 (copdem.js), or the AWS Terrain Tiles (Terrarium
+// PNGs, mostly SRTM ~30 m) as an alternative and fallback; see elevation.js.
 //
 // Vulnerability: depth-damage curves, approximately the JRC global flood
 // depth-damage functions for Asia (Huizinga et al. 2017).
@@ -21,10 +22,10 @@ const TERRARIUM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';
 
 // ---- Elevation ------------------------------------------------------------------
 
-function lonToPx(lon, z) {
+export function lonToPx(lon, z) {
   return ((lon + 180) / 360) * 256 * 2 ** z;
 }
-function latToPx(lat, z) {
+export function latToPx(lat, z) {
   const r = (lat * Math.PI) / 180;
   return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 256 * 2 ** z;
 }
@@ -42,16 +43,16 @@ async function decodeTerrarium(blob) {
   return out;
 }
 
-export class DEM {
-  constructor(z, x0, y0, nx, ny, tiles) {
-    Object.assign(this, { z, x0, y0, nx, ny, tiles });
+// A single elevation grid on Web Mercator pixels at zoom z (which may be
+// fractional), origin (ox, oy) in global pixels. Pixels are square on the
+// ground, so analyses can step in metres with metresPerPixel().
+export class GridDEM {
+  constructor({ z, ox, oy, w, h, data, source, label, resolutionM, files = [], channelRadius = 1, slopeStep = 1 }) {
+    Object.assign(this, { z, ox, oy, w, h, data, source, label, resolutionM, files, channelRadius, slopeStep });
   }
   _at(ix, iy) {
-    const tx = Math.floor(ix / 256);
-    const ty = Math.floor(iy / 256);
-    if (tx < 0 || ty < 0 || tx >= this.nx || ty >= this.ny) return NaN;
-    const t = this.tiles[ty * this.nx + tx];
-    return t ? t[(iy - ty * 256) * 256 + (ix - tx * 256)] : NaN;
+    if (ix < 0 || iy < 0 || ix >= this.w || iy >= this.h) return NaN;
+    return this.data[iy * this.w + ix];
   }
   _sample(px, py) {
     const ix = Math.floor(px);
@@ -65,7 +66,7 @@ export class DEM {
     return a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
   }
   _px(lon, lat) {
-    return [lonToPx(lon, this.z) - this.x0 * 256 - 0.5, latToPx(lat, this.z) - this.y0 * 256 - 0.5];
+    return [lonToPx(lon, this.z) - this.ox - 0.5, latToPx(lat, this.z) - this.oy - 0.5];
   }
   // Pixel-space access for analyses that sample many nearby points.
   pixel(lon, lat) {
@@ -77,8 +78,8 @@ export class DEM {
   // Inverse of pixel(): [lon, lat] of a pixel position.
   lonLat(px, py) {
     const n = 256 * 2 ** this.z;
-    const gx = px + 0.5 + this.x0 * 256;
-    const gy = py + 0.5 + this.y0 * 256;
+    const gx = px + 0.5 + this.ox;
+    const gy = py + 0.5 + this.oy;
     const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * gy) / n))) * 180) / Math.PI;
     return [(gx / n) * 360 - 180, lat];
   }
@@ -88,8 +89,9 @@ export class DEM {
   elev(lon, lat) {
     return this._sample(...this._px(lon, lat));
   }
-  // Lowest elevation within r pixels: approximates the channel bed.
-  minAround(lon, lat, r = 2) {
+  // Lowest elevation within r pixels: approximates the channel bed. The
+  // default radius suits the source (about one native data cell).
+  minAround(lon, lat, r = this.channelRadius) {
     const [px, py] = this._px(lon, lat);
     let min = Infinity;
     for (let dx = -r; dx <= r; dx++) {
@@ -102,11 +104,43 @@ export class DEM {
   }
   slopeDeg(lon, lat) {
     const [px, py] = this._px(lon, lat);
-    const k = 2; // sample ±2 px: the source data is coarser than the tiles
-    const size = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** this.z);
+    const k = this.slopeStep;
+    const size = this.metresPerPixel(lat);
     const dzdx = (this._sample(px + k, py) - this._sample(px - k, py)) / (2 * k * size);
     const dzdy = (this._sample(px, py + k) - this._sample(px, py - k)) / (2 * k * size);
     return (Math.atan(Math.hypot(dzdx, dzdy)) * 180) / Math.PI;
+  }
+  maxElev() {
+    let max = -Infinity;
+    for (const v of this.data) if (v > max) max = v;
+    return max;
+  }
+}
+
+// AWS Terrain Tiles: a mosaic of 256 px Terrarium tiles at an integer zoom.
+// The tiles are finer than the data under them (mostly ~30 m), so the
+// channel search and slope use ±2 pixels.
+export class DEM extends GridDEM {
+  constructor(z, x0, y0, nx, ny, tiles) {
+    const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y0 + ny / 2)) / 2 ** z))) * 180) / Math.PI;
+    super({
+      z, ox: x0 * 256, oy: y0 * 256, w: nx * 256, h: ny * 256, data: null,
+      source: 'terrain', label: `AWS Terrain Tiles, zoom ${z}`, channelRadius: 2, slopeStep: 2,
+      resolutionM: Math.round((40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** z)),
+    });
+    Object.assign(this, { x0, y0, nx, ny, tiles });
+  }
+  _at(ix, iy) {
+    const tx = Math.floor(ix / 256);
+    const ty = Math.floor(iy / 256);
+    if (tx < 0 || ty < 0 || tx >= this.nx || ty >= this.ny) return NaN;
+    const t = this.tiles[ty * this.nx + tx];
+    return t ? t[(iy - ty * 256) * 256 + (ix - tx * 256)] : NaN;
+  }
+  maxElev() {
+    let max = -Infinity;
+    for (const t of this.tiles) if (t) for (let i = 0; i < t.length; i += 97) if (t[i] > max) max = t[i];
+    return max;
   }
 }
 
@@ -243,7 +277,7 @@ export function floodRisk(ds, dem, P) {
     const nr = ds.nearest(p.x, p.y, pred, P.maxDist);
     if (!nr) continue;
     const eb = dem.elev(lon, lat);
-    const er = dem.minAround(nr.lonlat[0], nr.lonlat[1], 2);
+    const er = dem.minAround(nr.lonlat[0], nr.lonlat[1]);
     if (!Number.isFinite(eb) || !Number.isFinite(er)) continue;
     assessed++;
     p.hand = Math.max(0, eb - er);

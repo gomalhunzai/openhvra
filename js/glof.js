@@ -12,7 +12,7 @@
 // falls with distance downstream (default 20 m at the lake to 5 m at 30 km).
 
 import { lonLatArea, makeProjection, GridIndex, nearestOnSeg } from './spatial.js';
-import { loadDEM } from './risk.js';
+import { loadElevation, elevationSource } from './elevation.js';
 
 export const GLOF_DEFAULTS = { h0: 20, h30: 5, corridor: 600, maxPathKm: 80 };
 const scale = (v, lo, hi) => Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
@@ -220,11 +220,11 @@ export async function traceLakes(lakes, waterways, bbox, P = GLOF_DEFAULTS, { si
   const maxM = P.maxPathKm * 1000;
   const net = buildNetwork(waterways);
   const needDem = async () => {
-    const k = bbox.join(',');
+    const k = `${elevationSource()}:${bbox.join(',')}`;
     if (regionalCache.key !== k) {
       onStatus?.('Downloading regional elevation for tracing lake outflows…');
       const pad = 0.35;
-      regionalCache.dem = await loadDEM([bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad], { signal, maxZoom: 12, maxTiles: 64 });
+      regionalCache.dem = await loadElevation([bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad], { signal, kind: 'regional' });
       regionalCache.key = k;
     }
     return regionalCache.dem;
@@ -309,7 +309,7 @@ export function glofScore(p, ds, dem, idx, P = GLOF_DEFAULTS) {
     const t = sg.len ? Math.hypot(hit.x - sg.ax, hit.y - sg.ay) / sg.len : 0;
     const s = sg.s + t * sg.len;
     const [lon, lat] = ds.proj.toLonLat(hit.x, hit.y);
-    const channel = dem.minAround(lon, lat, 2);
+    const channel = dem.minAround(lon, lat);
     if (!Number.isFinite(channel)) continue;
     const height = Math.max(0, elev - channel);
     const H = Math.max(P.h30, P.h0 - ((P.h0 - P.h30) * s) / 30000);

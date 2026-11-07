@@ -208,7 +208,7 @@ export class Dataset {
     if (dem) {
       for (const h of all) {
         const ground = dem.elev(...h.p.feature.center);
-        const channel = dem.minAround(h.at[0], h.at[1], 2);
+        const channel = dem.minAround(h.at[0], h.at[1]);
         if (!Number.isFinite(ground) || !Number.isFinite(channel)) continue;
         h.height = Math.max(0, ground - channel);
         h.bank = (Math.atan2(h.height, Math.max(h.d, 1)) * 180) / Math.PI;
