@@ -13,6 +13,11 @@ export const DEPTH_CLASSES = [
 ];
 export const state = {
   dataset: null,
+  completeness: null, // OSM building completeness against GHSL (step 1)
+  osmParsed: null, // OSM data as downloaded (step 1)
+  addedBuildings: null, // buildings added from Overture to fill gaps (step 1)
+  addedFacilities: null, // critical facilities added from Overture places (step 1)
+  facilityCheck: null, // OSM critical facilities against Overture places (step 1)
   marks: { lakes: [], glaciers: [], paths: {} }, // user-marked glacial lakes, glaciers and outflow paths
   drawPurpose: null, // set while drawing a GLOF mark instead of an area
   is3d: false, // 3D view (terrain + building extrusions) switched on

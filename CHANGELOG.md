@@ -8,6 +8,22 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [0.13.0] – 2026-11-11
+
+With the same settings, results are identical to 0.12.3 unless buildings or facilities are added. The default building detail is now **Footprints**, so a run with the default settings uses exact building areas instead of estimated ones.
+
+### Added
+- **Building completeness check in step 1** ([#12](https://github.com/gomalhunzai/openhvra/issues/12), phase 1). After loading, the footprint area of the OSM buildings is compared with the GHSL built-up surface for 2020 (GHS-BUILT-S R2023A, 3 arc-seconds, © European Union, JRC, CC BY 4.0) in blocks of about 270 m. Step 1 reports the overall share and warns when it is under 80%. A new map layer shows the blocks where OSM has under 25%, 25–50%, 50–80% or 80% or more of the built-up area. The check is on by default and downloads only the parts of the global file covering the area (usually a few hundred kB, read straight from the AWS Open Data registry). The share, the rating and the block table are in `README.txt`, `parameters.csv`, `tables/osm_completeness_blocks.csv` and `layers/osm_completeness.geojson`.
+- Checked on towns whose buildings are fully mapped in OSM from official registers: Amersfoort (Netherlands) 100%, Albi (France) 99%, Washington DC (United States) 104%, using footprints.
+- **Filling gaps in buildings and critical facilities from Overture Maps** ([#12](https://github.com/gomalhunzai/openhvra/issues/12), phase 2). Everything still comes from OSM; other sources are used only for buildings and critical facilities, and only when OSM looks incomplete: under 10% → added automatically with a caution; 10–80% → offered with a button; 80% or more → nothing added. Added features are a separate green layer, included in every step (population is recalculated and steps 4–7 must be run again), marked in the exports and removable with one click.
+  - **Buildings**: footprints detected from satellite imagery by Microsoft and Google (and Esri) from the Overture Maps buildings data (ODbL), read from Overture's public tile file (only the tiles covering the area). Any that overlaps or touches an OSM building is left out (OSM footprints in Footprints mode, bounding boxes in Light mode, 5 m around buildings mapped as points). `building_source` and `overture_id` in buildings.csv. Test in Karimabad (Hunza), Footprints mode: 1,152 added (Google 737, Microsoft 415), 33 left out as overlaps, share of the GHSL built-up area 69% → 98%. In Light mode the bounding boxes let no duplicates through but left out about 6% of the real gaps (199 of 3,443), so Footprints mode is recommended.
+  - **Critical facilities**: places from the Overture Maps places data (CDLA Permissive 2.0; Foursquare records Apache 2.0), from 62 of Overture's categories mapped to the health, education, emergency, community, utilities, transport and hazardous groups. Places need a confidence of at least 0.6 and must not be marked closed; any within 100 m of an OSM facility of the same group, or with the same name, is left out as a duplicate. `facility_source`, `overture_id` and `overture_confidence` in facilities.csv.
+- In **Light** mode, building areas come from bounding boxes, which overstate buildings not aligned north–south: in Hebden Bridge the share was about 1.5 times the footprint-based one (112% vs 76%). The app and the exports flag the Light-mode share as an upper bound.
+
+### Changed
+- **Footprints is now the default building detail** in step 1, so OSM buildings are drawn on the map as their real shapes, like the added buildings, instead of points. Light mode (about 3× smaller downloads, areas up to 60 km² instead of 25 km²) is still available and still shows buildings as points.
+- **The Layers box no longer ticks layers that have no data yet.** Layers filled by a step (completeness, added buildings and facilities, exposure, flood depth, social vulnerability, glaciers and lakes, multi-hazard) start unticked and greyed out, tick themselves when their step runs, and untick again when their data is cleared.
+
 ## [0.12.3] – 2026-11-07
 
 No method changes: results are identical to 0.12.2.

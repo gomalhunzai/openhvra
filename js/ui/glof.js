@@ -3,13 +3,24 @@
 import { ringBBox, lonLatArea } from '../spatial.js';
 import { $, state } from './shared.js';
 import { escapeHtml, fmt } from './format.js';
-import { actions, draw, map } from './map.js';
+import { actions, draw, layerCtrl, map } from './map.js';
 import { lakeUploads, runMH } from './multihazard.js';
 import { download, stamp } from './exports.js';
 
 // ---- Glaciers, glacial lakes and outflow paths (GLOF) --------------------------------------------
 
 let markSeq = 0;
+let cryoCount = 0; // downloaded glaciers and lakes on the map
+let markCount = 0; // features marked by the user
+let hadCryo = false;
+
+// The layer is available while it has something to show, and switches on when
+// it first gets something (unticked again by the layer control when emptied).
+function updateCryoLayer() {
+  const has = cryoCount + markCount > 0;
+  layerCtrl.setAvailable('cryo', has, has && !hadCryo);
+  hadCryo = has;
+}
 const MARK_HINTS = {
   'lake-point': ['point', 'Click the glacial lake. Esc cancels.'],
   'lake-outline': ['polygon', 'Click around the lake shore. Double-click, Enter or click the first point to finish. Esc cancels.'],
@@ -68,6 +79,8 @@ function renderMarks() {
     `<li class="done"><span class="mark">✎</span><span class="label">${escapeHtml(label)}</span><button type="button" class="btn mini" data-del="${key}" title="Delete">Delete</button></li>`).join('');
   $('dl-marks').disabled = !items.length;
   map.getSource('cryo-marks')?.setData(marksGeoJSON());
+  markCount = items.length;
+  updateCryoLayer();
 }
 function marksGeoJSON() {
   const M = state.marks;
@@ -87,6 +100,8 @@ function marksGeoJSON() {
 export function showCryo(ctx) {
   const fc = (features) => ({ type: 'FeatureCollection', features });
   map.getSource('cryo-glaciers')?.setData(fc(ctx?.glacierFeatures ?? []));
+  cryoCount = (ctx?.glacierFeatures?.length ?? 0) + (ctx?.lakes?.length ?? 0);
+  updateCryoLayer();
   map.getSource('cryo-lakes')?.setData(fc((ctx?.lakes ?? []).map((l) => ({
     type: 'Feature', geometry: { type: 'Point', coordinates: [l.lon, l.lat] },
     properties: { id: l.id, name: l.name, area: l.area, elev: Math.round(l.elev ?? 0), reaches: !!l.reaches, method: l.method ?? '', source: l.source },

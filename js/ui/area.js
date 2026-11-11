@@ -16,6 +16,7 @@ import { clearSVI } from './social.js';
 import { clearMH } from './multihazard.js';
 import { updateReportChecklist } from './exports.js';
 import { refresh3D } from './view3d.js';
+import { clearCompleteness, runCompleteness } from './completeness.js';
 
 // ---- Area of interest ------------------------------------------------------------------
 
@@ -177,18 +178,36 @@ async function loadData() {
         setStatus(Object.entries(parts).map(([k, v]) => `${names[k]}: ${v}`).join('<br>'));
       },
     });
-    const ds = new Dataset(parsed, bbox, state.aoi?.polygons);
-    state.dataset = ds;
-    state.byFid = new Map(ds.points.map((p) => [p.fid, p]));
     state.loadOpts = opts;
     state.loadedAoi = state.aoi;
     state.dem = null;
+    state.osmParsed = parsed; // as downloaded, before any added buildings or facilities
+    const ds = useDataset(parsed, bbox);
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    setStatus(`Loaded ${fmt(ds.buildings.length)} buildings, ${fmt(ds.facilities.length)} facilities, ${fmt(parsed.roads.length)} road and ${fmt(parsed.waterways.length)} waterway lines in ${secs}s.` +
+      (opts.buildings === 'light' ? ' Building areas are estimated from bounding boxes.' : ''));
+    if ($('dl-completeness').checked && (opts.buildings !== 'none' || opts.facilities)) runCompleteness(ds, state.abort.signal).then(updateReportChecklist);
+  } catch (err) {
+    if (err.name !== 'AbortError') setStatus(`Could not load data: ${escapeHtml(err.message)}. The public servers may be busy, so try again shortly or load a smaller area.`, true);
+  } finally {
+    $('progress').classList.add('hidden');
+    updateAoiInfo();
+  }
+}
+// Makes `parsed` the data of every step: map layers and population, with
+// steps 4–7 cleared (they must be run again). Used on loading, and when
+// buildings from other sources are added or removed.
+function useDataset(parsed, bbox, { keepChecks = false } = {}) {
+    const ds = new Dataset(parsed, bbox, state.loadedAoi?.polygons);
+    state.dataset = ds;
+    state.byFid = new Map(ds.points.map((p) => [p.fid, p]));
     map.getSource('buildings').setData({ type: 'FeatureCollection', features: ds.buildings.map((p) => p.feature) });
     map.getSource('facilities').setData({ type: 'FeatureCollection', features: ds.facilities.map((p) => p.feature) });
     map.getSource('roads').setData({ type: 'FeatureCollection', features: parsed.roads });
     map.getSource('waterways').setData({ type: 'FeatureCollection', features: parsed.waterways });
     const [w, s, e, n] = bbox;
     map.getSource('bbox').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[w, s], [e, s], [e, n], [w, n], [w, s]] } });
+    if (!keepChecks) clearCompleteness();
     clearExposure();
     clearRisk();
     clearSVI();
@@ -203,16 +222,8 @@ async function loadData() {
     applyPopulation();
     updateReportChecklist();
     refresh3D();
-    const secs = ((performance.now() - t0) / 1000).toFixed(1);
-    setStatus(`Loaded ${fmt(ds.buildings.length)} buildings, ${fmt(ds.facilities.length)} facilities, ${fmt(parsed.roads.length)} road and ${fmt(parsed.waterways.length)} waterway lines in ${secs}s.` +
-      (opts.buildings === 'light' ? ' Building areas are estimated from bounding boxes.' : ''));
     if (state.last) probe(state.last);
-  } catch (err) {
-    if (err.name !== 'AbortError') setStatus(`Could not load data: ${escapeHtml(err.message)}. The public servers may be busy, so try again shortly or load a smaller area.`, true);
-  } finally {
-    $('progress').classList.add('hidden');
-    updateAoiInfo();
-  }
+    return ds;
 }
 $('load').addEventListener('click', loadData);
 $('clear-cache').addEventListener('click', async (e) => {
@@ -221,4 +232,4 @@ $('clear-cache').addEventListener('click', async (e) => {
   setStatus('Download cache cleared.');
 });
 
-Object.assign(actions, { setHint, setAoi, startDraw, updateAoiInfo });
+Object.assign(actions, { setHint, setAoi, startDraw, updateAoiInfo, useDataset });

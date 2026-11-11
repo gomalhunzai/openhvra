@@ -399,7 +399,7 @@ export const BUILDING_CLASSES = {
   unknown: 'Untagged (building=yes)',
 };
 
-function buildingClass(t) {
+export function buildingClass(t) {
   const b = t.building;
   if (B_RES.has(b)) return 'residential';
   if (B_COM.has(b)) return 'commercial';
@@ -468,11 +468,13 @@ export function parseOSM(elements) {
     let coords = null;
     let pt = null;
     let area = null;
+    let bbox = null;
     if (el.type === 'node') pt = [el.lon, el.lat];
     else if (el.geometry) coords = wayCoords(el);
     else if (el.bounds) {
       // Light mode: bounding box only. Footprints fill ~70% of their box on average.
       const { minlat, minlon, maxlat, maxlon } = el.bounds;
+      bbox = [minlon, minlat, maxlon, maxlat];
       pt = [(minlon + maxlon) / 2, (minlat + maxlat) / 2];
       area = 0.7 * lonLatArea([[minlon, minlat], [maxlon, minlat], [maxlon, maxlat], [minlon, maxlat]]);
     } else if (el.center) pt = [el.center.lon, el.center.lat];
@@ -489,6 +491,7 @@ export function parseOSM(elements) {
         fid: ++fid, osm_id, kind: 'building', cls: buildingClass(t), type: t.building === 'yes' ? 'building' : t.building, name,
         levels: parseLevels(t['building:levels']), area: area ? Math.round(area) : null,
         material: t['building:material'] ?? t['building:structure'] ?? t['building:walls'] ?? '',
+        ...(bbox ? { bbox } : {}),
       }));
       continue; // Building tags arrive with the buildings query; facilities come from the network query.
     }

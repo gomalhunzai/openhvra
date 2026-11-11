@@ -10,6 +10,10 @@ import { HAZARDS, HIGH, NOISE_FLOOR, LIKELIHOOD, IMPACT, IMPACT_STEPS, SCORE_CLA
 import { VERSION, VERSION_DATE, REPO } from './version.js';
 import { figuresFor } from './figures.js';
 import { svgToPng } from './pubcharts.js';
+import { GHSL_CREDIT } from './ghsl.js';
+import { COMPLETENESS_CLASSES } from './completeness.js';
+import { OVERTURE_CREDIT } from './addbuildings.js';
+import { OVERTURE_PLACES_CREDIT, MIN_CONFIDENCE, DUP_RADIUS_M } from './addfacilities.js';
 
 const FFLATE = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm';
 
@@ -34,15 +38,19 @@ function exposureIndex(S) {
 
 export function featureRow(p, S, exp = exposureIndex(S)) {
   const [lon, lat] = p.feature.center;
-  const row = { osm_id: p.osm_id, osm_url: `https://www.openstreetmap.org/${p.osm_id}`, lon: r6(lon), lat: r6(lat), name: p.name };
+  const row = { osm_id: p.osm_id, osm_url: p.osm_id ? `https://www.openstreetmap.org/${p.osm_id}` : null, lon: r6(lon), lat: r6(lat), name: p.name };
   if (p.kind === 'building') {
     Object.assign(row, {
+      building_source: p.source ? `${p.source} (via Overture)` : 'OpenStreetMap', overture_id: p.overture_id ?? null,
       class: p.cls, class_label: BUILDING_CLASSES[p.cls], type: p.type, material: p.material || null,
       storeys: p.floors, storeys_from_osm: p.levels != null, footprint_m2: Math.round(p.footprint),
-      footprint_estimated: p.area == null || S.loadOpts?.buildings === 'light', floor_area_m2: Math.round(p.footprint * p.floors), residents: r1(p.pop),
+      footprint_estimated: p.area == null || (S.loadOpts?.buildings === 'light' && !p.source), floor_area_m2: Math.round(p.footprint * p.floors), residents: r1(p.pop),
     });
   } else {
-    Object.assign(row, { group: p.group, group_label: FACILITY_GROUPS[p.group]?.label, type: p.type, critical: CRITICAL_GROUPS.has(p.group) });
+    Object.assign(row, {
+      facility_source: p.source ? `Overture places (${p.source_datasets || 'unknown'})` : 'OpenStreetMap', overture_id: p.overture_id ?? null, overture_confidence: p.confidence ?? null,
+      group: p.group, group_label: FACILITY_GROUPS[p.group]?.label, type: p.type, critical: CRITICAL_GROUPS.has(p.group),
+    });
   }
   if (S.exposure) {
     const h = exp.get(p);
@@ -113,6 +121,39 @@ function parameterRows(S) {
       if (E.files.length) add('1 Area & data', 'elevation_files', E.files);
       if (E.fallback) add('1 Area & data', 'elevation_note', E.fallback);
     }
+  }
+  const C = S.completeness;
+  add('1 Area & data', 'completeness_check', C ? C.source : 'not run');
+  if (C?.ratio != null) {
+    add('1 Area & data', 'osm_building_area_m2', Math.round(C.osmTotal));
+    add('1 Area & data', 'ghsl_built_up_area_m2', Math.round(C.refTotal));
+    add('1 Area & data', 'osm_completeness_pct', Math.round(100 * C.ratio));
+    add('1 Area & data', 'osm_completeness_rating', C.rating.label);
+    add('1 Area & data', 'osm_completeness_note', C.light ? 'Light mode: bounding-box areas, share is an upper bound' : 'footprint areas');
+    add('1 Area & data', 'built_up_in_blocks_under_50pct_pct', Math.round(100 * C.lowShare));
+  }
+  const A = S.addedBuildings;
+  add('1 Area & data', 'buildings_added', A ? A.features.length : 0);
+  if (A) {
+    add('1 Area & data', 'buildings_added_how', A.auto ? 'automatically (OSM under 10% of GHSL built-up area)' : 'by the user');
+    add('1 Area & data', 'buildings_added_source', `Overture Maps buildings, release ${A.release}`);
+    add('1 Area & data', 'buildings_added_by_provider', Object.entries(A.counts).map(([k, v]) => `${k} ${v}`));
+    add('1 Area & data', 'buildings_left_out_overlapping_osm', A.duplicates);
+    if (A.after?.ratio != null) add('1 Area & data', 'completeness_with_added_pct', Math.round(100 * A.after.ratio));
+  }
+  const FC = S.facilityCheck;
+  if (FC && FC.share != null) {
+    add('1 Area & data', 'critical_facilities_osm', FC.osm);
+    add('1 Area & data', 'critical_facilities_overture_not_in_osm', FC.missing);
+    add('1 Area & data', 'critical_facilities_osm_share_pct', Math.round(100 * FC.share));
+  }
+  const AF = S.addedFacilities;
+  add('1 Area & data', 'facilities_added', AF ? AF.features.length : 0);
+  if (AF) {
+    add('1 Area & data', 'facilities_added_how', AF.auto ? 'automatically (OSM under 10% of known critical facilities)' : 'by the user');
+    add('1 Area & data', 'facilities_added_source', `Overture Maps places, release ${AF.release}; confidence >= ${MIN_CONFIDENCE}, open, not within ${DUP_RADIUS_M} m of an OSM facility of the same group or name`);
+    add('1 Area & data', 'facilities_added_by_group', Object.entries(AF.groups).map(([k, v]) => `${k} ${v}`));
+    add('1 Area & data', 'facilities_left_out_as_duplicates', AF.duplicates);
   }
   const P = S.ds.popParams;
   add('2 Population', 'floor_area_per_person_m2', P.m2PerPerson);
@@ -240,6 +281,29 @@ function summaryText(S) {
   const s = ds.summary();
   L.push(`${fmt(s.buildings)} buildings, ${fmt(s.facilities)} facilities, roads ${(s.len.road / 1000).toFixed(2)} km, waterways ${(s.len.water / 1000).toFixed(2)} km.`);
   L.push(`Building detail: ${S.loadOpts?.buildings ?? 'n/a'}${S.loadOpts?.buildings === 'light' ? ' (areas estimated from bounding boxes)' : ''}.`);
+  const C = S.completeness;
+  if (C?.ratio != null) {
+    L.push(`Building completeness: OSM buildings cover about ${Math.round(100 * C.ratio)}% of the built-up area in the ${C.source} (${C.rating.label}).`);
+    if (C.rating.key !== 'good') L.push('  Counts of residents, buildings and losses below are probably too low where buildings are missing from OSM.');
+    L.push(`  ${Math.round(100 * C.lowShare)}% of the built-up area is in ~270 m blocks where OSM has under half of it (layers/osm_completeness.geojson).`);
+    L.push('  GHSL is itself a satellite estimate (2020) and its accuracy varies by place; use it to find gaps, then check them on imagery.');
+    if (C.light) L.push('  Light mode: building areas come from bounding boxes, which overstate buildings not aligned north-south, so this share is an upper bound. Use Footprints for a reliable check.');
+  } else L.push(`Building completeness: ${C ? 'no GHSL built-up area to compare with' : 'not checked'}.`);
+  if (S.addedBuildings) {
+    const A = S.addedBuildings;
+    L.push(`Buildings added to fill gaps${A.auto ? ' (automatically: OSM had under 10% of the built-up area)' : ''}: ${fmt(A.features.length)} from satellite imagery via Overture Maps (release ${A.release}): ${Object.entries(A.counts).map(([k, v]) => `${k} ${fmt(v)}`).join(', ')}.`);
+    L.push(`  ${fmt(A.duplicates)} more ${A.duplicates === 1 ? 'was left out because it overlaps' : 'were left out because they overlap'} or touch${A.duplicates === 1 ? 'es' : ''} an OSM building. All results below include the added buildings (building_source column in buildings.csv).`);
+    if (A.after?.ratio != null) L.push(`  With them, buildings cover about ${Math.round(100 * A.after.ratio)}% of the GHSL built-up area.`);
+    L.push('  CAUTION: added buildings are not checked on the ground; treat results as indicative.');
+  }
+  const FC = S.facilityCheck;
+  if (FC?.share != null) L.push(`Critical facilities: OSM has ${fmt(FC.osm)}; Overture Maps lists ${fmt(FC.missing)} more not in OSM (OSM has about ${Math.round(100 * FC.share)}% of those known).`);
+  if (S.addedFacilities) {
+    const AF = S.addedFacilities;
+    L.push(`Facilities added${AF.auto ? ' (automatically: OSM had under 10% of those known)' : ''}: ${fmt(AF.features.length)} from Overture Maps places (release ${AF.release}): ${Object.entries(AF.groups).map(([k, v]) => `${FACILITY_GROUPS[k].label} ${fmt(v)}`).join(', ')}.`);
+    L.push(`  Places with confidence >= ${MIN_CONFIDENCE} and not marked closed; ${fmt(AF.duplicates)} left out as within ${DUP_RADIUS_M} m of an OSM facility of the same group or name (facility_source column in facilities.csv).`);
+    L.push('  CAUTION: added facilities come mostly from business listings and are not checked on the ground.');
+  }
 
   h('2. Population');
   L.push(`Estimated residents: ${fmt(s.pop)} (floor area per person ${ds.popParams.m2PerPerson} m², storeys if unknown ${ds.popParams.defaultLevels}${ds.popFactor !== 1 ? `, calibrated ×${ds.popFactor.toFixed(2)} to a known total of ${fmt(ds.popParams.knownTotal)}${[ds.popParams.knownSource, ds.popParams.knownYear].filter(Boolean).length ? ` (${[ds.popParams.knownSource, ds.popParams.knownYear].filter(Boolean).join(', ')})` : ''}` : ''}).`);
@@ -307,6 +371,9 @@ function summaryText(S) {
   L.push('Building costs come from an open global model (see step 5) unless you entered your own: local costs are better.');
   h('Credits');
   L.push('Data © OpenStreetMap contributors (ODbL), Overpass API, USGS, World Bank, Nominatim.');
+  if (S.completeness) L.push(`Building completeness reference: ${GHSL_CREDIT}.`);
+  if (S.addedBuildings) L.push(`Added buildings: ${OVERTURE_CREDIT}.`);
+  if (S.facilityCheck || S.addedFacilities) L.push(`Facility check and added facilities: ${OVERTURE_PLACES_CREDIT}.`);
   L.push(`Elevation: ${S.elevation?.credit ?? 'Copernicus DEM GLO-30'}${S.elevation?.fallback ? ` (${S.elevation.fallback})` : ''}.`);
   if (S.risk?.params.costCitation) L.push(`Building costs: ${S.risk.params.costCitation}`);
   L.push('OpenHVRA by Gomal Amin — https://www.openstreetmap.org/user/Gomal%20Amin');
@@ -423,6 +490,12 @@ export async function buildPackage(S) {
 
   const s = ds.summary();
   put('tables/population_by_class.csv', toCSV(Object.entries(s.classes).map(([k, c]) => ({ class: BUILDING_CLASSES[k], buildings: c.count, residents: Math.round(c.pop), floor_area_m2: Math.round(c.area) }))));
+  if (S.completeness?.blocks.length) {
+    put('tables/osm_completeness_blocks.csv', toCSV(S.completeness.blocks.map((b) => ({
+      west: r6(b.bbox[0]), south: r6(b.bbox[1]), east: r6(b.bbox[2]), north: r6(b.bbox[3]),
+      ghsl_built_up_m2: Math.round(b.ref), osm_building_m2: Math.round(b.osm), osm_completeness_pct: Math.round(100 * b.ratio), class: COMPLETENESS_CLASSES[b.cls].label,
+    }))));
+  }
   put('tables/facilities_by_group.csv', toCSV(Object.entries(FACILITY_GROUPS).map(([k, g]) => ({ group: g.label, count: s.groups[k] ?? 0, critical: CRITICAL_GROUPS.has(k) }))));
   if (S.exposure) {
     const E = S.exposure;
@@ -472,6 +545,13 @@ export async function buildPackage(S) {
   else {
     const [w, s, e, n] = S.ds.bbox; // map view used as the area
     put('layers/area.geojson', fc([{ type: 'Feature', properties: { name: S.areaLabel ?? 'Map view' }, geometry: roundGeom({ type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }) }]));
+  }
+  if (S.completeness?.blocks.length) {
+    put('layers/osm_completeness.geojson', fc(S.completeness.blocks.map((b) => {
+      const [w, s, e, n] = b.bbox.map(r6);
+      return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+        properties: { ghsl_built_up_m2: Math.round(b.ref), osm_building_m2: Math.round(b.osm), osm_completeness_pct: Math.round(100 * b.ratio), class: COMPLETENESS_CLASSES[b.cls].label } };
+    })));
   }
   put('layers/buildings.geojson', fc(ds.buildings.map((b, i) => ({ type: 'Feature', geometry: roundGeom(b.feature.geometry), properties: bRows[i] }))));
   put('layers/facilities.geojson', fc(ds.facilities.map((f, i) => ({ type: 'Feature', geometry: roundGeom(f.feature.geometry), properties: fRows[i] }))));

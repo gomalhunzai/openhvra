@@ -56,7 +56,8 @@ export class LayerControl {
     this.basemaps = basemaps;
     this.onChange = onChange;
     this.basemap = basemap;
-    this.layers = layers.map((l) => ({ available: true, visible: true, ...l }));
+    // Layers with no data yet start switched off; they switch on when their step runs.
+    this.layers = layers.map((l) => ({ available: true, visible: l.available !== false, ...l }));
     this.rows = {};
   }
 
@@ -190,10 +191,12 @@ export class LayerControl {
     return !!(l?.visible && l.available);
   }
 
-  // Mark a layer as having data (or not); `show` also switches it on.
+  // Mark a layer as having data (or not); `show` also switches it on. A layer
+  // that loses its data is switched off, so it is not ticked while empty.
   setAvailable(key, available, show = false) {
     const l = this._get(key);
     l.available = available;
+    if (!available) l.visible = false;
     if (show) this.setVisible(key, true);
     else {
       this._apply(l);

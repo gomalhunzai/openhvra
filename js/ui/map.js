@@ -7,6 +7,7 @@ import { DrawTool } from '../draw.js';
 import { DrawControl, LayerControl, ThreeDControl } from '../controls.js';
 import { SVI_CLASSES } from '../social.js';
 import { SCORE_CLASSES } from '../hazards.js';
+import { COMPLETENESS_CLASSES } from '../completeness.js';
 import { $, DEPTH_CLASSES, EMPTY, state } from './shared.js';
 
 // Step functions the map controls call; filled in by area.js, glof.js and view3d.js.
@@ -68,6 +69,10 @@ export const layerCtrl = new LayerControl({
   basemap: 'osm',
   layers: [
     { key: 'area', label: 'Selected area', ids: ['aoi-fill', 'aoi-line', 'bbox'], symbol: { kind: 'line', color: '#7048e8' } },
+    { key: 'completeness', label: 'OSM building completeness (step 1)', ids: ['completeness-fill'], symbol: { kind: 'fill', color: '#6c47c4' }, available: false,
+      hint: 'Load data with the completeness check on', ramp: ramp(COMPLETENESS_CLASSES) },
+    { key: 'added', label: 'Added from Overture (step 1)', ids: ['added-line', 'added-pt'], symbol: { kind: 'line', color: '#0ca678' }, available: false,
+      hint: 'Add missing buildings or facilities in step 1 to show', items: [{ label: 'Building (satellite footprint)', color: '#0ca678' }, { label: 'Facility (ringed)', color: '#0ca678' }] },
     { key: 'buildings', label: 'Buildings', ids: ['buildings-fill', 'buildings-line', 'buildings-pt'], symbol: { kind: 'fill', color: '#5c6b7a' } },
     { key: 'roads', label: 'Roads', ids: ['roads'], symbol: { kind: 'line', color: '#f59f00' },
       items: [{ label: 'Major road', color: '#f59f00' }, { label: 'Other road', color: '#868e96' }, { label: 'Footpath', color: '#adb5bd' }] },
@@ -81,7 +86,8 @@ export const layerCtrl = new LayerControl({
       hint: 'Run step 5 to show', ramp: ramp(DEPTH_CLASSES) },
     { key: 'svi', label: 'Social vulnerability (step 6)', ids: ['svi-fill', 'svi-pt'], symbol: { kind: 'fill', color: '#b8481b' }, available: false, exclusive: 'colour',
       hint: 'Run step 6 to show', ramp: ramp(SVI_CLASSES) },
-    { key: 'cryo', label: 'Glaciers, lakes & GLOF paths', ids: ['cryo-glacier-fill', 'cryo-glacier-line', 'cryo-paths-other', 'cryo-paths', 'cryo-lakes', 'cryo-marks-line', 'cryo-marks-pt'], symbol: { kind: 'line', color: '#7048e8' },
+    { key: 'cryo', label: 'Glaciers, lakes & GLOF paths', ids: ['cryo-glacier-fill', 'cryo-glacier-line', 'cryo-paths-other', 'cryo-paths', 'cryo-lakes', 'cryo-marks-line', 'cryo-marks-pt'], symbol: { kind: 'line', color: '#7048e8' }, available: false,
+      hint: 'Run step 7, or mark a glacier or lake, to show',
       items: [{ label: 'Glacier', color: '#a5d8ff' }, { label: 'Glacial lake (dark = drains through your area)', color: '#1971c2' }, { label: 'Outflow path reaching your area', color: '#7048e8' },
         { label: 'Outflow path draining elsewhere', color: '#868e96' }, { label: 'Marked by you', color: '#0c8599' }] },
     { key: 'mh', label: 'Multi-hazard / risk (step 7)', ids: ['mh-fill', 'mh-pt'], symbol: { kind: 'fill', color: '#ad2b2b' }, available: false, exclusive: 'colour',
@@ -110,11 +116,15 @@ export function metresToPixels(metres, lat) {
   return ['interpolate', ['exponential', 2], ['zoom'], 0, w0, 22, w0 * 2 ** 22];
 }
 map.on('load', () => {
-  for (const id of ['aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'mh', 'risk', 'cryo-glaciers', 'cryo-lakes', 'cryo-paths', 'cryo-marks', 'b3d', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
+  for (const id of ['completeness', 'added', 'aoi', 'buildings', 'roads', 'waterways', 'facilities', 'buffer', 'exposed', 'svi', 'mh', 'risk', 'cryo-glaciers', 'cryo-lakes', 'cryo-paths', 'cryo-marks', 'b3d', 'bbox', 'probe', 'probe-hits', 'probe-links']) {
     map.addSource(id, { type: 'geojson', data: EMPTY });
   }
   const isPoint = ['==', ['geometry-type'], 'Point'];
   const ptRadius = ['interpolate', ['linear'], ['zoom'], 13, 1.5, 16, 3, 18, 5];
+  const complColor = ['match', ['get', 'cls']];
+  COMPLETENESS_CLASSES.forEach((c, i) => complColor.push(i, c.color));
+  complColor.push(COMPLETENESS_CLASSES[0].color);
+  map.addLayer({ id: 'completeness-fill', type: 'fill', source: 'completeness', paint: { 'fill-color': complColor, 'fill-opacity': ['match', ['get', 'cls'], 3, 0.12, 0.55], 'fill-outline-color': 'rgba(255,255,255,0.6)' } });
   map.addLayer({ id: 'aoi-fill', type: 'fill', source: 'aoi', paint: { 'fill-color': '#7048e8', 'fill-opacity': 0.05 } });
   map.addLayer({ id: 'aoi-line', type: 'line', source: 'aoi', paint: { 'line-color': '#7048e8', 'line-width': 2 } });
   map.addLayer({ id: 'bbox', type: 'line', source: 'bbox', paint: { 'line-color': '#495057', 'line-width': 1.2, 'line-dasharray': [3, 2] } });
@@ -150,10 +160,12 @@ map.on('load', () => {
   } });
   map.addLayer({ id: 'cryo-marks-line', type: 'line', source: 'cryo-marks', filter: ['!=', ['geometry-type'], 'Point'], paint: { 'line-color': '#0c8599', 'line-width': 2, 'line-dasharray': [2, 1] } });
   map.addLayer({ id: 'cryo-marks-pt', type: 'circle', source: 'cryo-marks', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 6, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#0c8599', 'circle-stroke-width': 2.5 } });
+  map.addLayer({ id: 'added-line', type: 'line', source: 'added', filter: ['!', isPoint], paint: { 'line-color': '#0ca678', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.8, 18, 2.5] } });
   map.addLayer({ id: 'facilities', type: 'circle', source: 'facilities', paint: {
     'circle-color': groupColor, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3, 18, 7],
     'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5,
   } });
+  map.addLayer({ id: 'added-pt', type: 'circle', source: 'added', filter: isPoint, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 6, 18, 11], 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#0ca678', 'circle-stroke-width': 2.5 } });
   map.addLayer({ id: 'exposed-pt', type: 'circle', source: 'exposed', filter: isPoint, paint: {
     'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 5, 18, 10], 'circle-color': 'rgba(0,0,0,0)',
     'circle-stroke-color': exposedColor, 'circle-stroke-width': 2.5,

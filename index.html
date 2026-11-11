@@ -69,8 +69,8 @@
           <label><input type="checkbox" id="dl-paths"> Footpaths</label>
         </div>
         <div class="radio-row" role="radiogroup" aria-label="Building detail">
-          <label><input type="radio" name="bdetail" value="light" checked> <b>Light</b> <span class="muted">(about 3× smaller; areas estimated)</span></label>
-          <label><input type="radio" name="bdetail" value="footprints"> <b>Footprints</b> <span class="muted">(exact shapes and areas)</span></label>
+          <label><input type="radio" name="bdetail" value="footprints" checked> <b>Footprints</b> <span class="muted">(exact shapes and areas)</span></label>
+          <label><input type="radio" name="bdetail" value="light"> <b>Light</b> <span class="muted">(about 3× smaller; buildings shown as points, areas estimated)</span></label>
         </div>
         <label class="field"><span>Elevation data</span>
           <select id="elev-source">
@@ -78,9 +78,11 @@
             <option value="terrain">AWS Terrain Tiles (SRTM and national data)</option>
           </select>
         </label>
+        <label class="field check"><input type="checkbox" id="dl-completeness" checked><span>Check how complete buildings and facilities are, and fill big gaps (GHSL and Overture Maps; usually 1–5 MB)</span></label>
         <button id="load" class="btn primary block">Load OSM data</button>
         <div id="progress" class="progress hidden"><div></div></div>
         <p id="status" class="muted small">Pick an area, then load. Loaded areas are cached in your browser for 3 days.</p>
+        <div id="completeness"></div>
         <p class="small"><a href="#" id="clear-cache">Clear download cache</a></p>
       </div>
     </details>
@@ -302,7 +304,7 @@
     </details>
     <footer class="muted small">
       Created and maintained by <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a> (OpenStreetMap profile).<br>
-      Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL), via the Overpass API. Elevation: <a href="https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM" target="_blank" rel="noopener">Copernicus DEM GLO-30</a> © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; all rights reserved (via <a href="https://planetarycomputer.microsoft.com/dataset/cop-dem-glo-30" target="_blank" rel="noopener">Microsoft Planetary Computer</a>). 3D view and fallback: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (SRTM and others).
+      Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL), via the Overpass API. Elevation: <a href="https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM" target="_blank" rel="noopener">Copernicus DEM GLO-30</a> © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; all rights reserved (via <a href="https://planetarycomputer.microsoft.com/dataset/cop-dem-glo-30" target="_blank" rel="noopener">Microsoft Planetary Computer</a>). 3D view and fallback: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (SRTM and others). Built-up surface: <a href="https://human-settlement.emergency.copernicus.eu/ghs_buS2023.php" target="_blank" rel="noopener">GHS-BUILT-S R2023A</a> © European Union, JRC (CC BY 4.0). Added buildings: <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a> (ODbL; Microsoft, Google, Esri).
       All figures are screening estimates from mapped data and may be incomplete. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Help improve the map</a>.
     </footer>
 
@@ -345,7 +347,7 @@
         <li>These are screening estimates for prioritisation. Verify hotspots in the field and against official hazard maps.</li>
       </ul>
 
-      <p class="help-credit">Data: © OpenStreetMap contributors (ODbL), Overpass API, Copernicus DEM GLO-30 (© DLR e.V., © Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA), AWS Terrain Tiles, USGS, World Bank, Nominatim. Created by <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a>. Version <a class="version-link" target="_blank" rel="noopener"></a>. Source code: <a href="https://github.com/gomalhunzai/openhvra" target="_blank" rel="noopener">GitHub</a> (<a href="https://github.com/gomalhunzai/openhvra/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0 License</a>).</p>
+      <p class="help-credit">Data: © OpenStreetMap contributors (ODbL), Overpass API, Copernicus DEM GLO-30 (© DLR e.V., © Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA), AWS Terrain Tiles, GHSL GHS-BUILT-S (© European Union, JRC, CC BY 4.0), Overture Maps buildings (ODbL), USGS, World Bank, Nominatim. Created by <a href="https://www.openstreetmap.org/user/Gomal%20Amin" target="_blank" rel="noopener">Gomal Amin</a>. Version <a class="version-link" target="_blank" rel="noopener"></a>. Source code: <a href="https://github.com/gomalhunzai/openhvra" target="_blank" rel="noopener">GitHub</a> (<a href="https://github.com/gomalhunzai/openhvra/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0 License</a>).</p>
     </div>
     <div class="help-foot">
       <label><input type="checkbox" id="help-hide"> Don't show this again</label>
