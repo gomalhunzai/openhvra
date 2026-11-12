@@ -153,6 +153,8 @@ table.inputs td { padding: 2px 4px 2px 0; }
 .project-bar .check input { margin-top: 2px; }
 #project-status { margin: 6px 0 0; }
 #project-status p { margin: 4px 0 0; }
+.whats-new { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 6px; padding: 8px 12px; margin: 12px 0; }
+.whats-new p { margin: 0; }
 #project-status:empty { display: none; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; flex: none; }
 .warn { background: color-mix(in srgb, var(--danger) 12%, transparent); border-radius: 6px; padding: 6px 8px; }

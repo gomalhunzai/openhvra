@@ -8,7 +8,7 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
-## [Unreleased]
+## [0.13.1] – 2026-11-12
 
 No method changes: results are identical to 0.13.0.
 
@@ -17,6 +17,7 @@ No method changes: results are identical to 0.13.0.
 - The file is gzip-compressed JSON with a format marker, a layout version (older layouts are upgraded when opened) and the app version. Opening a file saved with a version whose methods differ, or with a newer version, shows a warning. Every value in a file is checked before use; invalid parts are left out or the file is refused with a message.
 - The ZIP package (step 8) includes `project.openhvra` (area and settings, without the data), to repeat the analysis later.
 - The browser asks before closing the page when there is unsaved work.
+- The welcome window has a short note on what is new, and its how-to list explains saving and opening projects.
 
 ### Fixed
 - Adding or removing buildings or facilities in step 1 no longer looks up the building costs again, which replaced costs the user had edited. Costs are now looked up once per area.
