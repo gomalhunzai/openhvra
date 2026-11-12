@@ -80,6 +80,7 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
    - `README.txt`: a readable summary of every setting and result, step by step, including the risk-matrix working
    - `steps/`: a detailed table for **each step you ran** (population, exposure, flood risk, social vulnerability, multi-hazard), covering the features that step assessed and its values
    - `parameters.csv`: every selected setting
+   - `project.openhvra`: the area and every setting as a project file (without the downloaded data), to repeat the analysis later
    - `buildings.csv` and `facilities.csv`: one row per feature with all its analysis values (population, distance and height above water, flood depth and loss per scenario, average annual loss, social vulnerability and its indicators, every hazard score, the multi-hazard index and combined risk)
    - `tables/`: population, exposure, flood scenarios, finance layers, vulnerability classes, vulnerable groups, hazard summary, **risk-matrix calculation** and earthquakes
    - `layers/`: area, buildings, facilities, roads, waterways and glacial lakes as GeoJSON, with the same values
@@ -101,6 +102,17 @@ A free web map for disaster risk practitioners. It shows how many people, buildi
 - markets, shops & finance
 - hazardous sites
 - other
+
+### Saving and opening projects
+
+The **Project** box under the search bar saves your work to a file and opens it again, to continue later, share it with a colleague, or repeat an analysis ([#13](https://github.com/gomalhunzai/openhvra/issues/13)).
+
+- **Save** (Ctrl+S) writes a `.openhvra` file with the project name, the area, every setting and input (download options, population model, distances, water levels, building costs and where they came from, vulnerable-group shares, hazards and weights, GLOF settings), uploaded census and lake layers, your glacier and lake marks, which steps were run, the map view and layers. In Chrome and Edge you choose where to save it; other browsers download it.
+- **Include the downloaded data** (on by default) also stores the OpenStreetMap data and any buildings and facilities added from Overture, so the project reopens **exactly** as saved, even offline or after OpenStreetMap has changed. Without it, the file is only a few kB and the data is downloaded again when it is opened. A test in Karimabad (12 km², 5,097 buildings including 2,711 added) gave 503 kB with the data and 1.6 kB without.
+- **Open…** (Ctrl+O, or drop the file on the map) checks the file, puts everything back, and runs the steps that had been run again, so the results come back too. If the project was saved with an earlier version of OpenHVRA in which methods have since changed, or with a newer version, you are told that results may differ. Unsaved work is protected: the browser asks before you close the page, and opening a project asks before replacing it.
+- Files stay on your computer; nothing is uploaded.
+
+A project file is gzip-compressed JSON (like QGIS `.qgz` files), so it can also be read with other tools (`gunzip -c project.openhvra`). It starts with `"format": "openhvra-project"` and a `schemaVersion`; files from older layouts are upgraded when opened. Everything in a file is checked before use, and anything that is not valid is left out or refused with a message.
 
 A **welcome window** explains what the app is and how to run an assessment step by step. It opens on a visitor's first visit, and the **How to use** link in the header reopens it.
 
@@ -192,6 +204,7 @@ The app is plain static files, so you can host it on GitHub Pages (*Settings →
 | `js/ui/social.js`, `js/ui/multihazard.js` | Step 6 (social vulnerability) and step 7 (multi-hazard risk) |
 | `js/ui/glof.js`, `js/ui/view3d.js` | Glaciers, lakes, marks and GLOF paths; 3D view |
 | `js/ui/exports.js`, `js/ui/misc.js` | Step 8 and per-step exports; place search, mobile layout, welcome dialog |
+| `js/project.js`, `js/ui/project.js` | Project files: format, checking and compression; Save and Open |
 | `tests/` | Automated tests of the core calculations (`node --test`) |
 
 ## Limitations: read before using the results

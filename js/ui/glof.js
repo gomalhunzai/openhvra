@@ -41,6 +41,13 @@ export function markedLakes() {
     };
   });
 }
+// Puts back marks saved in a project; new marks are numbered after them.
+export function restoreMarks(marks) {
+  state.marks = marks;
+  const ids = [...marks.lakes, ...marks.glaciers].map((x) => +/^mark:(d+)$/.exec(x.id)?.[1] || 0);
+  markSeq = Math.max(markSeq, 0, ...ids);
+  renderMarks();
+}
 function startMark(kind, extra = {}) {
   if (draw.mode) draw.cancel(false);
   state.drawPurpose = { kind, ...extra };

@@ -53,7 +53,10 @@ function check(ds) {
 }
 
 // After loading: both checks, then automatic additions where OSM has under 10%.
-export async function runCompleteness(ds, signal) {
+// When reopening a project, `restore` ({ buildings?, facilities? }, as saved)
+// replaces the automatic rule: exactly what was added before is added again,
+// from the saved features if the project has them, otherwise downloaded anew.
+export async function runCompleteness(ds, signal, { restore = null } = {}) {
   const el = $('completeness');
   el.innerHTML = '<p class="muted small">Checking how complete the buildings and facilities are…</p>';
   const jobs = [];
@@ -61,11 +64,55 @@ export async function runCompleteness(ds, signal) {
   if (state.loadOpts?.facilities) jobs.push(checkFacilities(ds, signal));
   await Promise.all(jobs);
   if (state.dataset !== ds) return;
-  const autoB = state.completeness?.ratio != null && state.completeness.ratio < AUTO_BELOW;
-  const autoF = state.facilityCheck?.share != null && state.facilityCheck.share < AUTO_BELOW;
-  if (autoB) await addBuildings(true);
-  if (autoF && state.dataset) addFacilities(true);
+  if (restore) {
+    await restoreAdded(restore);
+  } else {
+    const autoB = state.completeness?.ratio != null && state.completeness.ratio < AUTO_BELOW;
+    const autoF = state.facilityCheck?.share != null && state.facilityCheck.share < AUTO_BELOW;
+    if (autoB) await addBuildings(true);
+    if (autoF && state.dataset) addFacilities(true);
+  }
   render();
+}
+
+async function restoreAdded({ buildings: B, facilities: F }) {
+  if (B?.features) {
+    const m = B.meta ?? {};
+    state.addedBuildings = {
+      features: B.features, auto: B.auto, duplicates: +m.duplicates || 0, release: String(m.release ?? ''), tiles: +m.tiles || 0, MB: +m.MB || 0,
+      counts: sourceCounts(B.features),
+    };
+    const ds = rebuild();
+    state.addedBuildings.after = grid ? check(ds) : null;
+  } else if (B) {
+    await addBuildings(B.auto);
+  }
+  if (!state.dataset) return;
+  if (F?.features) {
+    const groups = {};
+    for (const f of F.features) groups[f.properties.group] = (groups[f.properties.group] ?? 0) + 1;
+    const m = F.meta ?? {};
+    state.addedFacilities = { features: F.features, auto: F.auto, groups, duplicates: +m.duplicates || 0, release: String(m.release ?? '') };
+    rebuild();
+  } else if (F) {
+    addFacilities(F.auto);
+  }
+}
+
+// What was added, for saving in a project (features only when `withData`).
+export function addedForProject(withData) {
+  const out = {};
+  const A = state.addedBuildings;
+  if (A) {
+    out.buildings = { auto: A.auto, meta: { duplicates: A.duplicates, release: A.release, tiles: A.tiles, MB: A.MB } };
+    if (withData) out.buildings.features = A.features;
+  }
+  const F = state.addedFacilities;
+  if (F) {
+    out.facilities = { auto: F.auto, meta: { duplicates: F.duplicates, release: F.release } };
+    if (withData) out.facilities.features = F.features;
+  }
+  return out;
 }
 
 async function checkBuildings(ds, signal) {

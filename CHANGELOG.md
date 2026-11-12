@@ -8,6 +8,19 @@ All notable changes to OpenHVRA are listed here. Versions follow [semantic versi
 
 Every exported map, chart, CSV and report states the version that produced it. The code for any version is on the [Releases page](https://github.com/gomalhunzai/openhvra/releases).
 
+## [Unreleased]
+
+No method changes: results are identical to 0.13.0.
+
+### Added
+- **Save and open projects** ([#13](https://github.com/gomalhunzai/openhvra/issues/13), part 1). A new **Project** box under the search bar saves the work to a `.openhvra` file (Ctrl+S) and opens it again (Ctrl+O, or drop it on the map). The file holds the project name, the area, every setting and input (including uploaded census and lake layers and glacier and lake marks), building costs and where they came from, which steps were run, the map view and layers. Optionally (on by default) it also holds the downloaded OpenStreetMap data and the buildings and facilities added from Overture, so the project reopens exactly as saved, also offline. Opening a project reruns the steps that had been run. Tested in Karimabad: after saving, reloading and opening, every setting, the 5,097 buildings (2,711 added), the population, exposure, average annual loss, social vulnerability and multi-hazard scores were identical, both with the saved data and with the data downloaded again.
+- The file is gzip-compressed JSON with a format marker, a layout version (older layouts are upgraded when opened) and the app version. Opening a file saved with a version whose methods differ, or with a newer version, shows a warning. Every value in a file is checked before use; invalid parts are left out or the file is refused with a message.
+- The ZIP package (step 8) includes `project.openhvra` (area and settings, without the data), to repeat the analysis later.
+- The browser asks before closing the page when there is unsaved work.
+
+### Fixed
+- Adding or removing buildings or facilities in step 1 no longer looks up the building costs again, which replaced costs the user had edited. Costs are now looked up once per area.
+
 ## [0.13.0] – 2026-11-11
 
 With the same settings, results are identical to 0.12.3 unless buildings or facilities are added. The default building detail is now **Footprints**, so a run with the default settings uses exact building areas instead of estimated ones.

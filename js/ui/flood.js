@@ -51,7 +51,7 @@ export async function fillCosts() {
       $(`contents-${k}`).value = c.contentsPct[k];
     }
     $('currency').value = 'USD';
-    state.costInfo = { ...c, label: costSourceText(c), edited: false };
+    state.costInfo = { ...c, label: costSourceText(c), edited: false, areaKey: ds.bbox.join() };
     $('cost-status').innerHTML = `Costs from the ${escapeHtml(costSourceText(c))}: replacement cost in US dollars (not depreciated).` +
       (c.source === 'gem' && c.level === 'country' ? ' No regional value for this area, so national values are used.' : '') +
       ` Edit any value to use local figures. <span class="muted">Source: ${escapeHtml(c.citation)}</span>`;
@@ -65,6 +65,16 @@ export async function fillCosts() {
   }
 }
 $('cost-fetch').addEventListener('click', fillCosts);
+// Restores where the costs came from (from a project); the values are in the table.
+export function restoreCostInfo(info, areaKey) {
+  const keep = ['source', 'label', 'citation', 'country', 'region', 'level', 'year', 'priceYear', 'gdpPc'];
+  const c = Object.fromEntries(keep.filter((k) => info[k] != null && typeof info[k] !== 'object').map((k) => [k, info[k]]));
+  const tf = {};
+  for (const [k, v] of Object.entries(info.typeFactors ?? {})) if (CONSTRUCTION_TYPES[k] && Number.isFinite(v) && v > 0) tf[k] = v;
+  state.costInfo = { source: 'placeholder', label: 'Placeholder values (costs not looked up)', ...c, edited: !!info.edited, typeFactors: tf, areaKey };
+  $('cost-status').textContent = c.source === 'placeholder' || !c.label ? '' : `Costs restored from the project: ${costSourceText(state.costInfo)}${info.edited ? ', edited by the user' : ''}.`;
+  showCostTypes();
+}
 $('cost-source').addEventListener('change', () => {
   if ($('cost-source').value === 'own') {
     state.costInfo = { source: 'own', label: 'Own values entered by the user', edited: true, typeFactors: {} };
@@ -113,7 +123,7 @@ export async function ensureDEM(statusEl) {
   state.dem = { key, dem };
   return dem;
 }
-async function runRisk() {
+export async function runRisk() {
   const ds = state.dataset;
   if (!ds) return;
   const P = riskParams();

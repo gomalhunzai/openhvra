@@ -15,3 +15,4 @@ import './ui/exports.js';
 import './ui/misc.js';
 import './ui/glof.js';
 import './ui/view3d.js';
+import './ui/project.js';

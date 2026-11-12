@@ -14,7 +14,7 @@ import { SVI_CLASSES, sviSummary } from '../social.js';
 import { HAZARDS, HIGH, SCORE_CLASSES } from '../hazards.js';
 import { $, DEPTH_CLASSES, state } from './shared.js';
 import { compact, escapeHtml, fmt } from './format.js';
-import { map } from './map.js';
+import { actions, map } from './map.js';
 import { aoiArea } from './area.js';
 import { financeParams } from './flood.js';
 import { shares } from './social.js';
@@ -316,6 +316,7 @@ $('dl-package').addEventListener('click', async () => {
     const S = snapshot();
     if ($('pkg-maps').checked) S.mapFiles = await buildMaps((t) => ($('report-status').textContent = t));
     $('report-status').textContent = 'Building charts and the package…';
+    S.projectFile = await actions.projectBytes?.(false); // area and settings, to repeat the analysis
     const zip = await buildPackage(S);
     const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
     Object.assign(document.createElement('a'), { href: url, download: `openhvra-${stamp()}.zip` }).click();

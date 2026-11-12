@@ -266,6 +266,7 @@ function summaryText(S) {
   h('Contents of this package');
   L.push('README.txt                this summary');
   L.push('parameters.csv            every setting selected, by step');
+  if (S.projectFile) L.push('project.openhvra          the area and every setting: open it in OpenHVRA (Open project) to repeat this analysis');
   L.push('steps/step*.csv           detailed table for each step that was run (features it assessed)');
   L.push('buildings.csv             one row per building with every analysis value');
   L.push('facilities.csv            one row per facility with every analysis value');
@@ -481,6 +482,7 @@ export async function buildPackage(S) {
     if (text) files[name] = strToU8(text);
   };
   put('README.txt', summaryText(S));
+  if (S.projectFile) files['project.openhvra'] = S.projectFile;
   for (const st of STEPS) if (st.ran(S)) put(`steps/${st.file}`, stepCSV(S, st.key));
   put('parameters.csv', toCSV(parameterRows(S)));
   const bRows = ds.buildings.map((b) => featureRow(b, S, exp));

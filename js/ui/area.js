@@ -91,6 +91,7 @@ const upload = { features: [], format: '' };
 $('upload-file').accept = ACCEPT;
 async function handleUpload(files) {
   if (!files?.length) return;
+  if (files.length === 1 && /.openhvra$/i.test(files[0].name)) return actions.openProjectFile(files[0]);
   const label = [...files].map((f) => f.name).join(', ');
   $('aoi-info').innerHTML = `Reading <b>${escapeHtml(label)}</b>…`;
   try {
@@ -151,7 +152,9 @@ export function setStatus(html, isError = false) {
   el.innerHTML = html;
   el.classList.toggle('warn', isError);
 }
-async function loadData() {
+// Downloads the OSM data for the area. When reopening a project, `restore`
+// says what was added to it, and the promise waits for the completeness check.
+async function loadData({ restore = null } = {}) {
   const bbox = currentBBox();
   const opts = {
     buildings: $('dl-buildings').checked ? buildingDetail() : 'none',
@@ -179,6 +182,7 @@ async function loadData() {
       },
     });
     state.loadOpts = opts;
+    state.loadedAt = new Date().toISOString();
     state.loadedAoi = state.aoi;
     state.dem = null;
     state.osmParsed = parsed; // as downloaded, before any added buildings or facilities
@@ -186,13 +190,38 @@ async function loadData() {
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
     setStatus(`Loaded ${fmt(ds.buildings.length)} buildings, ${fmt(ds.facilities.length)} facilities, ${fmt(parsed.roads.length)} road and ${fmt(parsed.waterways.length)} waterway lines in ${secs}s.` +
       (opts.buildings === 'light' ? ' Building areas are estimated from bounding boxes.' : ''));
-    if ($('dl-completeness').checked && (opts.buildings !== 'none' || opts.facilities)) runCompleteness(ds, state.abort.signal).then(updateReportChecklist);
+    if ($('dl-completeness').checked && (opts.buildings !== 'none' || opts.facilities)) {
+      const check = runCompleteness(ds, state.abort.signal, { restore }).then(updateReportChecklist);
+      if (restore) await check;
+    }
+    return true;
   } catch (err) {
     if (err.name !== 'AbortError') setStatus(`Could not load data: ${escapeHtml(err.message)}. The public servers may be busy, so try again shortly or load a smaller area.`, true);
+    return false;
   } finally {
     $('progress').classList.add('hidden');
     updateAoiInfo();
   }
+}
+// Uses OSM data saved in a project file instead of downloading it, so the
+// project opens exactly as it was saved (also offline).
+async function useSavedData(data) {
+  state.abort?.abort();
+  state.abort = new AbortController();
+  state.loadOpts = data.loadOpts;
+  state.loadedAt = data.downloadedAt || null;
+  state.loadedAoi = state.aoi;
+  state.dem = null;
+  state.osmParsed = data.osm;
+  const ds = useDataset(data.osm, data.bbox);
+  const when = data.downloadedAt ? ` downloaded on ${escapeHtml(data.downloadedAt.slice(0, 10))}` : '';
+  setStatus(`Using the data saved in the project${when}: ${fmt(ds.buildings.length)} buildings, ${fmt(ds.facilities.length)} facilities, ${fmt(data.osm.roads.length)} road and ${fmt(data.osm.waterways.length)} waterway lines. Press <b>Load OSM data</b> to download the latest instead.`);
+  updateAoiInfo();
+  if ($('dl-completeness').checked && (data.loadOpts.buildings !== 'none' || data.loadOpts.facilities)) {
+    await runCompleteness(ds, state.abort.signal, { restore: data.added ?? {} });
+    updateReportChecklist();
+  }
+  return ds;
 }
 // Makes `parsed` the data of every step: map layers and population, with
 // steps 4–7 cleared (they must be run again). Used on loading, and when
@@ -218,18 +247,41 @@ function useDataset(parsed, bbox, { keepChecks = false } = {}) {
     $('run').disabled = false;
     $('run-risk').disabled = false;
     $('cost-fetch').disabled = $('cost-source').value === 'own';
-    fillCosts();
+    // Look costs up once per area, so costs edited by the user (or restored
+    // from a project) are kept when buildings are added or removed.
+    if (state.costInfo.areaKey !== bbox.join()) fillCosts();
     applyPopulation();
     updateReportChecklist();
     refresh3D();
     if (state.last) probe(state.last);
     return ds;
 }
-$('load').addEventListener('click', loadData);
+// Removes the loaded data and every result (before opening a project).
+function resetData() {
+  state.abort?.abort();
+  state.dataset = null;
+  state.osmParsed = null;
+  state.loadOpts = null;
+  state.loadedAt = null;
+  state.loadedAoi = null;
+  state.dem = null;
+  state.byFid = new Map();
+  for (const id of ['buildings', 'facilities', 'roads', 'waterways', 'bbox']) map.getSource(id)?.setData(EMPTY);
+  clearCompleteness();
+  clearExposure();
+  clearRisk();
+  clearSVI();
+  clearMH();
+  for (const id of ['run-mh', 'run-svi', 'wb-fetch', 'run', 'run-risk', 'cost-fetch']) $(id).disabled = true;
+  setStatus('');
+  updateReportChecklist();
+  refresh3D();
+}
+$('load').addEventListener('click', () => loadData());
 $('clear-cache').addEventListener('click', async (e) => {
   e.preventDefault();
   await clearCache();
   setStatus('Download cache cleared.');
 });
 
-Object.assign(actions, { setHint, setAoi, startDraw, updateAoiInfo, useDataset });
+Object.assign(actions, { setHint, setAoi, startDraw, updateAoiInfo, useDataset, loadData, useSavedData, currentBBox, resetData });

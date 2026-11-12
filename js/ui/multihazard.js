@@ -51,6 +51,12 @@ $('lake-file').addEventListener('change', async (e) => {
     e.target.value = '';
   }
 });
+// Puts back lakes uploaded before the project was saved.
+export function restoreLakeUploads(lakes) {
+  lakeUploads.length = 0;
+  lakes.forEach((l, i) => lakeUploads.push({ ...l, id: `up:${i}` }));
+  $('lake-status').textContent = lakeUploads.length ? `${lakeUploads.length} uploaded lake(s) will be included in the GLOF assessment.` : '';
+}
 function mhWeights(use) {
   return Object.fromEntries([...use].map((k) => [k, Math.min(1, Math.max(0, +document.querySelector(`.hz-w[data-k=${k}]`).value || 0))]));
 }

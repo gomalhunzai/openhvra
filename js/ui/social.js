@@ -75,6 +75,33 @@ $('census-file').addEventListener('change', async (e) => {
     e.target.value = '';
   }
 });
+// The uploaded census layer, for saving in a project.
+export function censusForProject() {
+  if (!census.features.length) return null;
+  return { name: census.name, field: $('census-field').value, higher: $('census-higher').checked, features: census.features };
+}
+// Puts back a census layer saved in a project (null clears it).
+export function restoreCensus(c) {
+  const box = document.querySelector('.svi-ind[value=census]');
+  census.features = c?.features ?? [];
+  census.name = c?.name ?? '';
+  if (!c) {
+    $('census-field').innerHTML = '';
+    $('census-opts').classList.add('hidden');
+    $('census-status').textContent = '';
+    box.disabled = true;
+    box.checked = false;
+    return;
+  }
+  const keys = [...new Set(c.features.flatMap((f) => Object.keys(f.properties ?? {})))];
+  if (c.field && !keys.includes(c.field)) keys.unshift(c.field);
+  $('census-field').innerHTML = keys.map((k) => `<option>${escapeHtml(k)}</option>`).join('');
+  $('census-field').value = c.field;
+  $('census-higher').checked = c.higher;
+  $('census-opts').classList.remove('hidden');
+  box.disabled = false;
+  $('census-status').textContent = `${c.features.length} areas from ${c.name || 'the project'} (restored from the project).`;
+}
 export function runSVI() {
   const ds = state.dataset;
   if (!ds) return;

@@ -43,6 +43,18 @@
       </form>
     </section>
 
+    <section class="project-bar" aria-labelledby="project-title">
+      <div class="sub" id="project-title">Project</div>
+      <div class="row">
+        <input id="project-name" type="text" maxlength="120" placeholder="Untitled project" aria-label="Project name" autocomplete="off">
+        <button type="button" id="project-open" class="btn" title="Open a saved project (Ctrl+O)">Open…</button>
+        <button type="button" id="project-save" class="btn" title="Save the area, settings and results to a file (Ctrl+S)">Save</button>
+      </div>
+      <label class="check small"><input type="checkbox" id="project-data" checked><span>Include the downloaded data, so the project reopens exactly as saved, also offline (larger file)</span></label>
+      <input type="file" id="project-file" hidden>
+      <div id="project-status" class="small muted" role="status" aria-live="polite"></div>
+    </section>
+
     <details open>
       <summary><span class="step">1</span> Area &amp; data</summary>
       <div class="body">
@@ -336,6 +348,7 @@
         <li><b>Flood risk and risk finance</b> (step 5). Enter the water level for each return period. Building costs are filled in for your country and region from the GEM global exposure model (or, if you choose, the JRC formula with World Bank data); replace them with local construction costs if you have them. Then run it to get losses, the loss curve, average annual loss and the financing layers.</li>
         <li><b>Social vulnerability</b> (step 6). Click <i>Use national figures</i> to fill in the vulnerable-group shares, optionally upload a census layer such as poverty by ward, then compute.</li>
         <li><b>Multi-hazard risk</b> (step 7). Choose the hazards and their weights, and for GLOF check the glaciers, lakes and traced outflow paths on the map: mark missing lakes or glaciers, or draw a lake's path yourself if it looks wrong. Then run it to see the risk matrix, the hotspots and the combined risk map.</li>
+        <li><b>Save your work</b> with <i>Save</i> under <i>Project</i> (Ctrl+S). It writes a <code>.openhvra</code> file with the area, every setting and input (water levels, costs, shares, uploaded census and lake layers, your glacier and lake marks) and, if you keep the box ticked, the downloaded data. <i>Open…</i> (Ctrl+O, or drop the file on the map) puts it all back and runs the steps you had run again, so you can continue later or share the work with a colleague. Files are saved on your computer; nothing is uploaded.</li>
         <li><b>Report and export</b> (step 8). <i>Download full package</i> gives you a ZIP with a written summary, all your settings, a detailed table for each step you ran, publication maps and charts, tables for every building and facility with all analysis values, the risk-matrix calculation, and the map layers for QGIS. The checklist has a CSV for each completed step. Each step also has a <i>Map (PNG, 300 DPI)</i> button and charts you can download as SVG or PNG for reports and papers. Hover over any building or facility for its details. The <b>Layers</b> box at the bottom-left of the map switches the basemap, turns layers on and off, and shows each layer's legend. The <b>3D</b> button shows the terrain and buildings at their real height (right-drag or Ctrl+drag to tilt and rotate).</li>
       </ol>
 
